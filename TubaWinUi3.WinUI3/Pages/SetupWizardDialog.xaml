@@ -409,6 +409,29 @@
                         <ToggleSwitch x:Name="WizardSearchIndexToggle" Grid.Column="2" VerticalAlignment="Center" IsOn="False" />
                     </Grid>
                 </Border>
+                <Border
+                    Padding="16,12"
+                    HorizontalAlignment="Center"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8">
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Border Style="{StaticResource IconBorderStyle}">
+                            <FontIcon FontSize="18" Glyph="&#xE921;" />
+                        </Border>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                            <TextBlock FontWeight="Bold" Text="关闭主窗口时最小化到系统托盘" />
+                            <TextBlock Opacity="1.0" FontSize="13" TextWrapping="Wrap" Text="点关闭按钮不退出程序，留在托盘继续运行；默认关闭" />
+                        </StackPanel>
+                        <ToggleSwitch x:Name="WizardCloseToTrayToggle" Grid.Column="2" VerticalAlignment="Center" IsOn="False" />
+                    </Grid>
+                </Border>
             </StackPanel>
         </Grid>
     </Grid>

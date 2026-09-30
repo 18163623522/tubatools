@@ -84,10 +84,10 @@ public class CloseToTrayTests
     // ---------- 设置 ----------
 
     [Fact]
-    public void DefaultEnabled_IsTrue()
+    public void DefaultEnabled_IsFalse()
     {
-        // 默认开启：用户要的就是「别退出」，关掉开关的人自然会去设置里改
-        Assert.True(CloseToTrayService.DefaultEnabled);
+        // 默认关闭：需要常驻托盘的用户在新手引导或设置里主动开启
+        Assert.False(CloseToTrayService.DefaultEnabled);
     }
 
     [Fact]

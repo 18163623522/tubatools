@@ -17,14 +17,14 @@ namespace TubaWinUi3.Services;
 /// </summary>
 public static class CloseToTrayService
 {
-    /// <summary>设置键：关闭主窗口时是否最小化到系统托盘。缺省视为开启（用户要的就是「别退出」）。</summary>
+    /// <summary>设置键：关闭主窗口时是否最小化到系统托盘。缺省视为关闭（新手引导弹窗可开启）。</summary>
     public const string EnabledSettingKey = "CloseToTray";
 
     /// <summary>设置键：首次隐藏到托盘的气泡提示只弹一次。</summary>
     public const string HintShownSettingKey = "CloseToTrayHintShown";
 
     /// <summary>未写过设置时的默认值。</summary>
-    public const bool DefaultEnabled = true;
+    public const bool DefaultEnabled = false;
 
     /// <summary>气泡正文截断长度：气泡提示正文上限 255 字符，留出余量（标题另有 63 字符限制）。</summary>
     private const int BalloonTextMaxLength = 200;
@@ -43,7 +43,7 @@ public static class CloseToTrayService
     /// </summary>
     public static void ResetSessionEnding() => _sessionEnding = false;
 
-    /// <summary>当前设置值（默认开启）。</summary>
+    /// <summary>当前设置值（默认关闭）。</summary>
     public static bool IsEnabled => AppSettings.GetBool(EnabledSettingKey, DefaultEnabled);
 
     public static void SetEnabled(bool enabled) => AppSettings.Set(EnabledSettingKey, enabled);
