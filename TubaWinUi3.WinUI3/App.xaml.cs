@@ -19,6 +19,11 @@ public partial class App : Application
     public static MainWindow? MainWindow => ((App)Current)?._window;
     public static bool IsLiteMode { get; set; } = false;
 
+    private static bool _exiting;
+
+    /// <summary>是否已进入退出流程（托盘「退出」等明确退出请求）——窗口关闭拦截据此放行，不再隐藏到托盘。</summary>
+    public static bool IsExiting => _exiting;
+
     public App()
     {
         Environment.SetEnvironmentVariable("MICROSOFT_WINDOWSAPPRUNTIME_BASE_DIRECTORY", AppContext.BaseDirectory);
@@ -47,6 +52,9 @@ public partial class App : Application
 
         // 界面语言必须在任何打了 Uid 的控件创建前就绪（MainWindow 在 OnLaunched 里创建）。
         LocalizationService.Initialize();
+
+        // 「关闭主窗口 → 最小化到系统托盘」：注销/关机时必须放行关闭，否则会拖住系统注销
+        CloseToTrayService.AttachSessionEndingWatch();
 
         BuiltinToolRegistry.RegisterDefaults();
         AgentToolRegistry.RegisterDefaults();
@@ -112,16 +120,9 @@ public partial class App : Application
         {
             if (copyPathIndex + 1 < cmdLine.Length && !string.IsNullOrWhiteSpace(cmdLine[copyPathIndex + 1]))
             {
-                try
-                {
-                    var data = new Windows.ApplicationModel.DataTransfer.DataPackage();
-                    data.SetText(cmdLine[copyPathIndex + 1]);
-                    Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(data);
-                    Windows.ApplicationModel.DataTransfer.Clipboard.Flush();
-                }
-                catch
-                {
-                }
+                // 统一走 ClipboardService：占用时重试，失败只记日志（本进程马上 Exit，
+                // 没有窗口可以承载错误提示）。flush 保证进程退出后剪贴板内容依然可粘贴。
+                ClipboardService.TrySetText(cmdLine[copyPathIndex + 1], flush: true);
             }
             Exit();
             return;
@@ -331,6 +332,91 @@ public partial class App : Application
         catch
         {
             return "未知";
+        }
+    }
+
+    /// <summary>退出兜底短超时：主窗口不存在 / 关闭请求排不进 UI 队列时，清理根本跑不起来，不必久等。</summary>
+    private const int ExitWatchdogShortMs = 3000;
+
+    /// <summary>退出兜底：等待 <c>MainWindow_Closed</c> 清理完成的上限。清理是最重要的收尾，宁可多等。</summary>
+    private const int ExitCleanupWaitMs = 20000;
+
+    /// <summary>清理完成后留给 <c>Application.Exit()</c> 自己收尾的时间。</summary>
+    private const int ExitPostCleanupGraceMs = 2000;
+
+    private static volatile bool _cleanupFinished;
+
+    /// <summary><c>MainWindow_Closed</c> 的收尾清理已完成（退出看门狗据此判断何时可以强制结束进程）。</summary>
+    public static void NotifyCleanupFinished() => _cleanupFinished = true;
+
+    /// <summary>
+    /// 请求真正退出程序（托盘菜单「退出」等）。任意线程可调用。
+    ///
+    /// 流程：关掉主窗口 → <c>MainWindow_Closed</c> 走完整清理（FPS 的 ETW 会话、LiteMonitor 句柄、
+    /// 遥测收尾、设置落盘、托盘图标移除）→ 结束进程。绝不能再退回 Process.Kill：
+    /// 内核 ETW 会话不会随进程终止回收，残留会让下次启动的帧率采集失效。
+    /// </summary>
+    public static void RequestExit()
+    {
+        if (_exiting) return;
+        _exiting = true;
+        _cleanupFinished = false;
+
+        var window = MainWindow;
+        var queue = window?.DispatcherQueue;
+
+        bool cleanupWillRun;
+        if (queue is null || queue.HasThreadAccess)
+        {
+            ExitCore(window);
+            cleanupWillRun = window is not null;
+        }
+        else
+        {
+            cleanupWillRun = queue.TryEnqueue(() => ExitCore(window));
+        }
+
+        // 兜底：第三方控件（WebView2 等）偶尔会拖住消息循环，让 Exit() 迟迟不返回，
+        // 留下一个没有窗口的僵尸进程。硬退必须等清理跑完 —— 固定 3 秒硬超时会砍在
+        // LiteMonitor/ETW 释放的中途，而那正是这里最不能丢的一步。
+        _ = Task.Run(async () =>
+        {
+            if (cleanupWillRun)
+            {
+                var deadline = Environment.TickCount64 + ExitCleanupWaitMs;
+                while (!_cleanupFinished && Environment.TickCount64 < deadline)
+                    await Task.Delay(100);
+
+                if (_cleanupFinished)
+                    await Task.Delay(ExitPostCleanupGraceMs);
+            }
+            else
+            {
+                await Task.Delay(ExitWatchdogShortMs);
+            }
+
+            Environment.Exit(0);
+        });
+    }
+
+    private static void ExitCore(MainWindow? window)
+    {
+        try
+        {
+            window?.CloseForExit();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[App] 关闭主窗口失败（继续退出）: {ex.Message}");
+        }
+
+        try
+        {
+            Current.Exit();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[App] Application.Exit 失败（已忽略）: {ex.Message}");
         }
     }
 
@@ -654,10 +740,39 @@ public partial class App : Application
 
     private static Exception? _pendingException;
 
+    /// <summary>
+    /// 已知的 AI 助手面板（FieldCure ChatPanel）销毁竞态：面板已从界面移除、本轮回复作废，
+    /// 异常来自第三方组件对已关闭 WebView2 的收尾渲染（async void 事件里抛出，宿主拦不住），
+    /// 记日志留痕即可，不该再弹错误窗口打断用户（Issue #194，详见 ChatPanelCrashFilter）。
+    ///
+    /// <para><b>两个未处理异常入口都必须先过这里</b>：WinUI 的 Application.UnhandledException
+    /// 与 AppDomain 的 UnhandledException。此前只判了前者，用户报告里那条 ChatPanel
+    /// 异常正是从 AppDomain 入口漏过去、弹了错误窗口。</para>
+    /// </summary>
+    private static bool IsIgnorableAiPanelTeardownRace(Exception? ex)
+    {
+        if (!ChatPanelCrashFilter.IsTeardownRace(ex)) return false;
+
+        try
+        {
+            TubaWinUi3.Services.Agent.AgentDebugLog.Error(
+                "[App] AI 面板销毁竞态异常（已忽略，不影响使用）", ex);
+        }
+        catch { }
+
+        return true;
+    }
+
     private void OnUnhandledException(object sender, System.UnhandledExceptionEventArgs e)
     {
-        _pendingException = e.ExceptionObject as Exception ?? new Exception(e.ExceptionObject?.ToString() ?? "未知错误");
-        TelemetryService.TrackException(_pendingException, "AppDomain", fatal: true);
+        var ex = e.ExceptionObject as Exception ?? new Exception(e.ExceptionObject?.ToString() ?? "未知错误");
+
+        // 先过已知噪声过滤，再决定要不要把错误窗口弹给用户
+        var ignorable = IsIgnorableAiPanelTeardownRace(ex);
+        TelemetryService.TrackException(ex, ignorable ? "AppDomain.ChatPanelTeardownRace" : "AppDomain", fatal: true);
+        if (ignorable) return;
+
+        _pendingException = ex;
         NavigateToErrorPage();
     }
 
@@ -703,19 +818,7 @@ public partial class App : Application
 
         e.Handled = true;
 
-        // AI 助手面板（FieldCure ChatPanel）的销毁竞态：面板已从界面移除、本轮回复作废，
-        // 异常来自第三方组件对已关闭 WebView2 的收尾渲染（async void 事件里抛出，宿主拦不住），
-        // 记日志留痕即可，不该再弹错误窗口打断用户（Issue #194，详见 ChatPanelCrashFilter）。
-        if (ChatPanelCrashFilter.IsTeardownRace(e.Exception))
-        {
-            try
-            {
-                TubaWinUi3.Services.Agent.AgentDebugLog.Error(
-                    "[App] AI 面板销毁竞态异常（已忽略，不影响使用）", e.Exception);
-            }
-            catch { }
-            return;
-        }
+        if (IsIgnorableAiPanelTeardownRace(e.Exception)) return;
 
         _pendingException = e.Exception ?? new Exception(e.Message);
         NavigateToErrorPage();
