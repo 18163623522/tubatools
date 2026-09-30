@@ -151,6 +151,8 @@ public sealed partial class SetupWizardDialog : ContentDialog
         if (enableSearchIndex)
             _ = WindowsSearchIndexService.RegisterAllToolsAsync();
 
+        CloseToTrayService.SetEnabled(WizardCloseToTrayToggle.IsOn);
+
         AppSettings.Set("SetupCompleted", true);
     }
 }
