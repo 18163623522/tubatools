@@ -1,3 +1,5 @@
+#nullable enable
+
 using System.Diagnostics;
 using Aprillz.MewUI;
 using Aprillz.MewUI.Controls;
@@ -9,13 +11,14 @@ namespace TubaWinUi3.PECompatible;
 
 internal sealed class MainWindow
 {
-    private static readonly Color Canvas = Color.FromRgb(20, 22, 27);
-    private static readonly Color Surface = Color.FromRgb(29, 32, 39);
-    private static readonly Color SurfaceAlt = Color.FromRgb(37, 40, 48);
-    private static readonly Color SecondaryText = Color.FromRgb(165, 170, 181);
+    private static bool IsLightTheme => AppSettings.GetBool("ThemeLight", false);
+    private static Color Canvas => IsLightTheme ? Color.FromRgb(244, 245, 248) : Color.FromRgb(20, 22, 27);
+    private static Color Surface => IsLightTheme ? Color.FromRgb(255, 255, 255) : Color.FromRgb(29, 32, 39);
+    private static Color SurfaceAlt => IsLightTheme ? Color.FromRgb(228, 230, 236) : Color.FromRgb(37, 40, 48);
+    private static Color SecondaryText => IsLightTheme ? Color.FromRgb(96, 99, 108) : Color.FromRgb(165, 170, 181);
 
-    private readonly ContentControl _pageHost = new();
-    private readonly TextBlock _statusText = new();
+    private ContentControl _pageHost = null!;
+    private TextBlock _statusText = null!;
     private TextBox _searchBox = null!;
     private Window _window = null!;
     private string? _activeCategory;
@@ -27,12 +30,6 @@ internal sealed class MainWindow
 
     public Window CreateWindow()
     {
-        _searchBox = new TextBox()
-            .Placeholder("搜索工具名称、路径或标签")
-            .Width(340)
-            .Height(34)
-            .OnTextChanged(OnSearchChanged);
-
         _window = new Window()
             .Title("图吧工具箱 PE 兼容版")
             .Resizable(1180, 780)
@@ -40,13 +37,21 @@ internal sealed class MainWindow
             .Padding(0)
             .Content(BuildShell())
             .OnLoaded(() => _ = LoadToolsAsync())
-            .OnClosed(() => _uptimeTimer?.Dispose());
+            .OnClosed(StopUptimeTimer);
 
         return _window;
     }
 
     private Element BuildShell()
     {
+        _pageHost = new ContentControl();
+        _statusText = new TextBlock();
+        _searchBox = new TextBox()
+            .Placeholder("搜索工具名称、路径或标签")
+            .Width(340)
+            .Height(34)
+            .OnTextChanged(OnSearchChanged);
+
         var header = new Border
         {
             Background = Surface,
@@ -66,7 +71,7 @@ internal sealed class MainWindow
                         .VerticalAlignment(VerticalAlignment.Center),
                     _searchBox,
                     new Button()
-                        .Content(AppSettings.GetBool("ThemeLight", false) ? "深色主题" : "浅色主题")
+                        .Content(IsLightTheme ? "深色主题" : "浅色主题")
                         .OnClick(ToggleTheme)
                 )
         };
@@ -102,7 +107,7 @@ internal sealed class MainWindow
         root.Add(header);
         root.Add(footer);
         root.Add(body);
-        return root;
+        return new Border { Background = Canvas, Child = root };
     }
 
     private StackPanel BuildNavigation()
@@ -117,6 +122,7 @@ internal sealed class MainWindow
             _showHardwarePage = false;
             _showFavorites = false;
             _activeCategory = null;
+            StopUptimeTimer();
             _searchBox.Text = string.Empty;
             _ = LoadToolsAsync();
         }));
@@ -124,6 +130,8 @@ internal sealed class MainWindow
         {
             _showHardwarePage = true;
             _showFavorites = false;
+            _activeCategory = null;
+            _searchBox.Text = string.Empty;
             _ = LoadHardwareAsync(forceRefresh: false);
         }));
         navigation.Add(NavigationButton("收藏工具", () =>
@@ -131,6 +139,7 @@ internal sealed class MainWindow
             _showHardwarePage = false;
             _showFavorites = true;
             _activeCategory = null;
+            StopUptimeTimer();
             _searchBox.Text = string.Empty;
             _ = LoadToolsAsync();
         }));
@@ -149,6 +158,7 @@ internal sealed class MainWindow
                 _showHardwarePage = false;
                 _showFavorites = false;
                 _activeCategory = selectedCategory;
+                StopUptimeTimer();
                 _searchBox.Text = string.Empty;
                 _ = LoadToolsAsync();
             }));
@@ -168,8 +178,19 @@ internal sealed class MainWindow
     private void ToggleTheme()
     {
         var light = !AppSettings.GetBool("ThemeLight", false);
+        var query = _searchBox.Text;
         AppSettings.Set("ThemeLight", light);
         Application.Current.SetTheme(light ? ThemeVariant.Light : ThemeVariant.Dark);
+        _window.Content = BuildShell();
+        _searchBox.Text = query;
+        if (_showHardwarePage)
+        {
+            _ = LoadHardwareAsync(forceRefresh: false);
+        }
+        else
+        {
+            _ = LoadToolsAsync();
+        }
     }
 
     private void OnSearchChanged(string query)
@@ -179,6 +200,7 @@ internal sealed class MainWindow
             _showHardwarePage = false;
             _showFavorites = false;
             _activeCategory = null;
+            StopUptimeTimer();
         }
         _ = LoadToolsAsync();
     }
@@ -215,7 +237,13 @@ internal sealed class MainWindow
                     result = ToolCatalog.GetTools(category);
                 }
 
-                ToolIconService.LoadIcons(result);
+                try
+                {
+                    ToolIconService.LoadIcons(result);
+                }
+                catch
+                {
+                }
                 return result;
             });
 
@@ -327,10 +355,15 @@ internal sealed class MainWindow
         if (tool.ArchOptions.Count > 1)
         {
             var architecture = new StackPanel().Horizontal().Spacing(5);
+            var selectedArchitecture = new TextBlock()
+                .Text($"当前：{tool.SelectedArch?.DisplayText ?? "默认"}")
+                .Foreground(SecondaryText)
+                .VerticalAlignment(VerticalAlignment.Center);
             architecture.Add(new TextBlock()
                 .Text("架构")
                 .Foreground(SecondaryText)
                 .VerticalAlignment(VerticalAlignment.Center));
+            architecture.Add(selectedArchitecture);
             foreach (var option in tool.ArchOptions)
             {
                 var selectedOption = option;
@@ -339,12 +372,14 @@ internal sealed class MainWindow
                     .OnClick(() =>
                     {
                         tool.SelectedArch = selectedOption;
-                        _ = LoadToolsAsync();
+                        selectedArchitecture.Text = $"当前：{selectedOption.DisplayText}";
+                        _statusText.Text = $"已选择 {tool.Name} · {selectedOption.DisplayText}";
                     }));
             }
             cardContent.Add(architecture);
         }
-        else if (tool.Categories.Count > 1)
+
+        if (tool.Categories.Count > 1)
         {
             cardContent.Add(new TextBlock()
                 .Text(tool.CategoriesText)
@@ -470,6 +505,7 @@ internal sealed class MainWindow
     private async Task LoadHardwareAsync(bool forceRefresh)
     {
         var requestId = ++_loadVersion;
+        StopUptimeTimer();
         _statusText.Text = "正在读取硬件信息…";
         _pageHost.Content = MessagePanel("硬件信息", "正在读取本机硬件和系统信息…");
 
@@ -566,7 +602,7 @@ internal sealed class MainWindow
                                     .TextWrapping(TextWrapping.Wrap)
                             ))
                         .HorizontalAlignment(HorizontalAlignment.Stretch)
-                        .OnClick(() => CopyPath(item.Value)));
+                        .OnClick(() => CopyHardwareValue(item.Value)));
                 }
 
                 rows.Add(new Border
@@ -597,16 +633,26 @@ internal sealed class MainWindow
         var page = new DockPanel { LastChildFill = true, Spacing = 14, Padding = new Thickness(22) };
         page.Add(heading);
         page.Add(content);
-        return page;
+        return new Border { Background = Canvas, Child = page };
     }
 
-    private static Element BuildSummaryCard(string label, string value)
+    private Element BuildSummaryCard(string label, string value)
     {
         return BuildSummaryCard(label, new TextBlock().Text(value).FontSize(15).Bold());
     }
 
-    private static Element BuildSummaryCard(string label, TextBlock value)
+    private Element BuildSummaryCard(string label, TextBlock value)
     {
+        var copyButton = new Button()
+            .Content(new StackPanel()
+                .Vertical()
+                .Spacing(8)
+                .Children(
+                    new TextBlock().Text(label).Foreground(SecondaryText),
+                    value
+                ))
+            .HorizontalAlignment(HorizontalAlignment.Stretch)
+            .OnClick(() => CopyHardwareValue(value.Text));
         return new Border
         {
             Width = 270,
@@ -615,15 +661,16 @@ internal sealed class MainWindow
             BorderBrush = SurfaceAlt,
             BorderThickness = 1,
             CornerRadius = 8,
-            Padding = new Thickness(14),
-            Child = new StackPanel()
-                .Vertical()
-                .Spacing(8)
-                .Children(
-                    new TextBlock().Text(label).Foreground(SecondaryText),
-                    value
-                )
+            Padding = new Thickness(6),
+            Child = copyButton
         };
+    }
+
+    private void CopyHardwareValue(string value)
+    {
+        _statusText.Text = WindowsClipboard.SetText(value)
+            ? "已复制硬件信息"
+            : "复制到剪贴板失败";
     }
 
     private void UpdateUptime()
@@ -635,6 +682,13 @@ internal sealed class MainWindow
 
         var uptime = TimeSpan.FromMilliseconds(Environment.TickCount64);
         _uptimeText.Text = $"{uptime.Days}天 {uptime.Hours}小时 {uptime.Minutes}分钟 {uptime.Seconds}秒";
+    }
+
+    private void StopUptimeTimer()
+    {
+        _uptimeTimer?.Dispose();
+        _uptimeTimer = null;
+        _uptimeText = null;
     }
 
     private static string FindValue(HardwareInfoSection section, string label)
