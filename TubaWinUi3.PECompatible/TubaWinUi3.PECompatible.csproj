@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-x64</RuntimeIdentifier>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <RootNamespace>TubaWinUi3.PECompatible</RootNamespace>
+    <AssemblyName>图吧工具箱PE兼容版</AssemblyName>
+    <Version>1.0.0</Version>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <PublishTrimmed>false</PublishTrimmed>
+    <SelfContained Condition="'$(RuntimeIdentifier)' != ''">true</SelfContained>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Aprillz.MewUI.Core" Version="0.21.1" />
+    <PackageReference Include="Aprillz.MewUI.Platform.Win32" Version="0.21.1" />
+    <PackageReference Include="Aprillz.MewUI.Backend.Gdi" Version="0.21.1" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="System.Drawing.Common" Version="10.0.0" />
+    <PackageReference Include="System.Management" Version="10.0.8" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\TubaWinUi3.Compatible\Models\HardwareInfoItem.cs" Link="CompatibilityCore\Models\HardwareInfoItem.cs" />
+    <Compile Include="..\TubaWinUi3.Compatible\Models\HardwareInfoSection.cs" Link="CompatibilityCore\Models\HardwareInfoSection.cs" />
+    <Compile Include="..\TubaWinUi3.Compatible\Models\ToolItem.cs" Link="CompatibilityCore\Models\ToolItem.cs" />
+    <Compile Include="..\TubaWinUi3.Compatible\Services\AppSettings.cs" Link="CompatibilityCore\Services\AppSettings.cs" />
+    <Compile Include="..\TubaWinUi3.Compatible\Services\ConfigManager.cs" Link="CompatibilityCore\Services\ConfigManager.cs" />
+    <Compile Include="..\TubaWinUi3.Compatible\Services\FavoritesService.cs" Link="CompatibilityCore\Services\FavoritesService.cs" />
+    <Compile Include="..\TubaWinUi3.Compatible\Services\HardwareInfoService.cs" Link="CompatibilityCore\Services\HardwareInfoService.cs" />
+    <Compile Include="..\TubaWinUi3.Compatible\Services\NpuCatalog.cs" Link="CompatibilityCore\Services\NpuCatalog.cs" />
+    <Compile Include="..\TubaWinUi3.Compatible\Services\ToolCatalog.cs" Link="CompatibilityCore\Services\ToolCatalog.cs" />
+    <Compile Include="..\TubaWinUi3.Compatible\Services\ToolIconService.cs" Link="CompatibilityCore\Services\ToolIconService.cs" />
+    <Compile Include="..\TubaWinUi3.Compatible\Services\ToolMetadataService.cs" Link="CompatibilityCore\Services\ToolMetadataService.cs" />
+  </ItemGroup>
+</Project>
