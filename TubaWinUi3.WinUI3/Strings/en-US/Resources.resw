@@ -912,12 +912,6 @@
   <data name="Settings_Compact_Title.Text" xml:space="preserve">
     <value>Compact list mode</value>
   </data>
-  <data name="Settings_ComponentTest_Desc.Text" xml:space="preserve">
-    <value>Preview the HealthGauge and SparklineGraph components</value>
-  </data>
-  <data name="Settings_ComponentTest_Title.Text" xml:space="preserve">
-    <value>Component test</value>
-  </data>
   <data name="Settings_ConfigManager_Button.Text" xml:space="preserve">
     <value>Manage</value>
   </data>

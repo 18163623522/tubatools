@@ -398,11 +398,6 @@ public sealed partial class SettingsPage : Page, ILocalizablePage
         WhatsNewWindow.Show();
     }
 
-    private void NavTestPage_Tapped(object sender, TappedRoutedEventArgs e)
-    {
-        Frame.Navigate(typeof(TestPage));
-    }
-
     private void InitCompactModeToggle()
     {
         _compactModeInitializing = true;
