@@ -23,6 +23,7 @@ public sealed partial class QuickDeviceCheckPage : Page
     private const int TotalSteps = 8;
 
     private Controls.StressTestControl? _stressControl;
+    private Controls.KeyboardTestControl? _keyboardTestControl;
     private SpeechSynthesizer? _speechSynth;
     private bool _cameraLaunched;
     private MediaCapture? _mediaCapture;
@@ -69,6 +70,7 @@ public sealed partial class QuickDeviceCheckPage : Page
     public void Cleanup()
     {
         _stressControl?.Cleanup();
+        _keyboardTestControl?.Cleanup();
         StopCamera();
         _speechSynth?.Dispose();
     }
@@ -122,6 +124,8 @@ public sealed partial class QuickDeviceCheckPage : Page
 
     private void UpdateStepContent()
     {
+        _keyboardTestControl?.Cleanup();
+        _keyboardTestControl = null;
         StepContentPanel.Children.Clear();
         switch (_currentStep)
         {
@@ -619,62 +623,13 @@ public sealed partial class QuickDeviceCheckPage : Page
             "按下按键后对应键位会高亮显示。");
         stack.Children.Add(tipCard);
 
-        var actionsRow = new StackPanel
+        _keyboardTestControl = new Controls.KeyboardTestControl
         {
-            Orientation = Orientation.Horizontal,
-            Spacing = 12,
             HorizontalAlignment = HorizontalAlignment.Center
         };
+        stack.Children.Add(_keyboardTestControl);
 
-        var keyboardBtn = new Button
-        {
-            Content = new StackPanel
-            {
-                Orientation = Orientation.Horizontal,
-                Spacing = 8,
-                Children =
-                {
-                    new FontIcon { Glyph = "\uE92E", FontSize = 16 },
-                    new TextBlock { Text = "键盘测试", FontSize = 15 }
-                }
-            },
-            Style = Application.Current.Resources["AccentButtonStyle"] as Style,
-            Padding = new Thickness(20, 10, 20, 10)
-        };
-        keyboardBtn.Click += (_, _) => LaunchKeyboardTest();
-        actionsRow.Children.Add(keyboardBtn);
-
-        actionsRow.Children.Add(new TextBlock
-        {
-            Text = "请逐个按下键盘按键，检查是否有失灵按键",
-            FontSize = 13,
-            Foreground = new SolidColorBrush(ThemeColors.DimText),
-            VerticalAlignment = VerticalAlignment.Center,
-            TextWrapping = TextWrapping.Wrap,
-            MaxWidth = 300
-        });
-
-        stack.Children.Add(actionsRow);
         StepContentPanel.Children.Add(stack);
-    }
-
-    private void LaunchKeyboardTest()
-    {
-        try
-        {
-            var keyboardTool = BuiltinToolRegistry.GetById("keyboard-test");
-            if (keyboardTool != null)
-            {
-                var context = new BuiltinToolContext { XamlRoot = XamlRoot };
-                MainWindow.ActiveToolName = keyboardTool.Name;
-                _ = keyboardTool.ExecuteAsync(context);
-                SendToast("键盘测试已启动", "请逐个按下按键检查");
-            }
-        }
-        catch (Exception ex)
-        {
-            SendToast("启动失败", ex.Message);
-        }
     }
 
     #endregion

@@ -116,17 +116,20 @@ jobs:
               Remove-Item -Force -ErrorAction SilentlyContinue
           }
 
-      - name: Build compatible edition (single-file .NET Framework)
+      - name: Publish PE compatible edition (self-contained single-file)
         shell: pwsh
         run: |
-          dotnet build TubaWinUi3.Compatible/TubaWinUi3.Compatible.csproj -c Release
-          $compatExe = "TubaWinUi3.Compatible/bin/Release/net48/图吧工具箱Winui3兼容版.exe"
-          if (Test-Path -LiteralPath $compatExe) {
-            Write-Host "Compatible edition built successfully"
-            $size = [math]::Round((Get-Item -LiteralPath $compatExe).Length / 1MB, 1)
+          dotnet publish TubaWinUi3.PECompatible/TubaWinUi3.PECompatible.csproj `
+            -c Release `
+            -r win-x64 `
+            -o publish_pecompat_x64
+          $peExe = "publish_pecompat_x64/图吧工具箱PE兼容版.exe"
+          if (Test-Path -LiteralPath $peExe) {
+            Write-Host "PE compatible edition published successfully"
+            $size = [math]::Round((Get-Item -LiteralPath $peExe).Length / 1MB, 1)
             Write-Host "  Size: $size MB"
           } else {
-            Write-Host "::warning::Compatible edition exe not found at $compatExe"
+            Write-Host "::warning::PE compatible edition exe not found at $peExe"
           }
 
       - name: Build Inno Setup installer
@@ -148,10 +151,10 @@ jobs:
 
           Copy-Item -LiteralPath "Launcher\bin\图吧工具箱WinUI3_x64.exe" -Destination (Join-Path $stagingDir '图吧工具箱WinUI3.exe') -Force
 
-          $compatExe = "TubaWinUi3.Compatible/bin/Release/net48/图吧工具箱Winui3兼容版.exe"
-          if (Test-Path -LiteralPath $compatExe) {
-            Copy-Item -LiteralPath $compatExe -Destination (Join-Path $stagingDir '图吧工具箱Winui3兼容版.exe') -Force
-            Write-Host "Added compatible edition to portable zip"
+          $peExe = "publish_pecompat_x64/图吧工具箱PE兼容版.exe"
+          if (Test-Path -LiteralPath $peExe) {
+            Copy-Item -LiteralPath $peExe -Destination (Join-Path $stagingDir '图吧工具箱PE兼容版.exe') -Force
+            Write-Host "Added PE compatible edition to portable zip"
           }
 
           Compress-Archive -Path "$stagingDir\*" `

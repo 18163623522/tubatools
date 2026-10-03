@@ -13,6 +13,8 @@ dotnet publish TubaWinUi3.PECompatible/TubaWinUi3.PECompatible.csproj -c Release
 
 其他架构可将 RID 替换为 `win-x86` 或 `win-arm64`。该项目不启用裁剪或 NativeAOT，以保留现有 WMI 查询行为。
 
+Debug 构建完成后会自动把产物复制到主程序 Debug 输出目录下的 `图吧工具箱PE兼容版/` 子目录（如 `TubaWinUi3.WinUI3/bin/Debug/net10.0-windows10.0.26100.0/win-x64/图吧工具箱PE兼容版/`），便于直接以完整 `Tools/`、`Metadata/` 运行调试；主程序尚未构建出 Debug 产物时跳过复制。
+
 ## 便携目录
 
 将 `图吧工具箱PE兼容版.exe` 与原便携包的 `src/` 目录放在同一目录。应用会自动查找 `src/Tools/` 和 `src/Metadata/`；也支持直接放置 `Tools/` 与 `Metadata/`。如果 PE 镜像未包含 WMI 组件，硬件页面可能只能显示可用的部分信息，工具目录和启动功能不依赖 WMI。

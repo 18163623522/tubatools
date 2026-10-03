@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -23,7 +24,7 @@ public sealed partial class BenchmarkCloudPage : Page
 {
 	private List<BenchmarkReportEntry> _allReports = new List<BenchmarkReportEntry>();
 
-	private List<BenchmarkLeaderboardEntry> _leaderboard = new List<BenchmarkLeaderboardEntry>();
+	private ObservableCollection<BenchmarkLeaderboardEntry> _leaderboard = new ObservableCollection<BenchmarkLeaderboardEntry>();
 
 	private List<BenchmarkReportEntry> _myReports = new List<BenchmarkReportEntry>();
 
@@ -852,7 +853,6 @@ public sealed partial class BenchmarkCloudPage : Page
 		};
 		_currentPage = -1;
 		_hasMorePages = false;
-		_leaderboard.Clear();
 		_allLeaderboardEntries.Clear();
 		LoadMoreProgress.Visibility = Visibility.Collapsed;
 		LoadMoreText.Visibility = Visibility.Collapsed;
@@ -863,11 +863,17 @@ public sealed partial class BenchmarkCloudPage : Page
 		{
 			_allLeaderboardEntries = await BenchmarkCloudService.GetLeaderboardAsync(sortBy, filterText, null, CancellationToken.None);
 			_currentPage = 0;
-			_leaderboard = BenchmarkCloudService.GetLeaderboardPageSlice(_allLeaderboardEntries, _currentPage);
+			var firstPage = BenchmarkCloudService.GetLeaderboardPageSlice(_allLeaderboardEntries, _currentPage);
+			_leaderboard.Clear();
+			foreach (var entry in firstPage)
+			{
+				_leaderboard.Add(entry);
+			}
 			_hasMorePages = _leaderboard.Count < _allLeaderboardEntries.Count;
 			LeaderboardList.ItemsSource = _leaderboard;
 			LeaderboardList.Visibility = ((_leaderboard.Count <= 0) ? Visibility.Collapsed : Visibility.Visible);
 			LeaderboardEmpty.Visibility = ((_leaderboard.Count != 0) ? Visibility.Collapsed : Visibility.Visible);
+			HookLeaderboardScrollViewer();
 			UpdateLoadMoreUI(_allLeaderboardEntries.Count);
 		}
 		catch (Exception ex)
@@ -899,9 +905,10 @@ public sealed partial class BenchmarkCloudPage : Page
 			}
 			_currentPage = nextPage;
 			_hasMorePages = _leaderboard.Count + newEntries.Count < _allLeaderboardEntries.Count;
-			_leaderboard.AddRange(newEntries);
-			LeaderboardList.ItemsSource = null;
-			LeaderboardList.ItemsSource = _leaderboard;
+			foreach (var entry in newEntries)
+			{
+				_leaderboard.Add(entry);
+			}
 			UpdateLoadMoreUI(_allLeaderboardEntries.Count);
 		}
 		catch
@@ -945,12 +952,32 @@ public sealed partial class BenchmarkCloudPage : Page
 
 	private void LeaderboardList_Loaded(object sender, RoutedEventArgs e)
 	{
-		if (_leaderboardScrollViewer is not null)
-			_leaderboardScrollViewer.ViewChanged -= LeaderboardScrollViewer_ViewChanged;
+		HookLeaderboardScrollViewer();
+	}
 
-		_leaderboardScrollViewer = FindDescendantScrollViewer(LeaderboardList);
-		if (_leaderboardScrollViewer is not null)
-			_leaderboardScrollViewer.ViewChanged += LeaderboardScrollViewer_ViewChanged;
+	// ListView 初始为 Collapsed，首次 Loaded 时模板可能还没应用（拿不到内部 ScrollViewer），
+	// 所以主动 ApplyTemplate 并在仍拿不到时等下一次布局完成后再试；
+	// 列表变为可见后的数据刷新会再次调用本方法兜底。
+	private void HookLeaderboardScrollViewer()
+	{
+		if (_leaderboardScrollViewer is not null) return;
+
+		LeaderboardList.ApplyTemplate();
+		var scrollViewer = FindDescendantScrollViewer(LeaderboardList);
+		if (scrollViewer is null)
+		{
+			LeaderboardList.LayoutUpdated -= LeaderboardList_LayoutUpdated;
+			LeaderboardList.LayoutUpdated += LeaderboardList_LayoutUpdated;
+			return;
+		}
+		_leaderboardScrollViewer = scrollViewer;
+		scrollViewer.ViewChanged += LeaderboardScrollViewer_ViewChanged;
+	}
+
+	private void LeaderboardList_LayoutUpdated(object? sender, object e)
+	{
+		LeaderboardList.LayoutUpdated -= LeaderboardList_LayoutUpdated;
+		HookLeaderboardScrollViewer();
 	}
 
 	private static ScrollViewer? FindDescendantScrollViewer(DependencyObject root)

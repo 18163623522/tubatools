@@ -120,9 +120,9 @@ jobs:
           $csproj = $csproj -replace '<Version>[^<]*</Version>', "<Version>$ver</Version>"
           Set-Content -LiteralPath 'TubaWinUi3.WinUI3/TubaWinUi3.csproj' -Value $csproj -NoNewline
 
-          $compatCsproj = Get-Content -LiteralPath 'TubaWinUi3.Compatible/TubaWinUi3.Compatible.csproj' -Raw
-          $compatCsproj = $compatCsproj -replace '<Version>[^<]*</Version>', "<Version>$ver</Version>"
-          Set-Content -LiteralPath 'TubaWinUi3.Compatible/TubaWinUi3.Compatible.csproj' -Value $compatCsproj -NoNewline
+          $peCsproj = Get-Content -LiteralPath 'TubaWinUi3.PECompatible/TubaWinUi3.PECompatible.csproj' -Raw
+          $peCsproj = $peCsproj -replace '<Version>[^<]*</Version>', "<Version>$ver</Version>"
+          Set-Content -LiteralPath 'TubaWinUi3.PECompatible/TubaWinUi3.PECompatible.csproj' -Value $peCsproj -NoNewline
 
           foreach ($iss in @('installer.iss', 'installer-x64.iss', 'installer-x86.iss', 'installer-arm64.iss')) {
             if (Test-Path -LiteralPath $iss) {
@@ -212,17 +212,20 @@ jobs:
         with:
           path: installer-${{ matrix.arch }}.iss
 
-      - name: Build compatible edition (single-file .NET Framework)
+      - name: Publish PE compatible edition (self-contained single-file)
         shell: pwsh
         run: |
-          dotnet build TubaWinUi3.Compatible/TubaWinUi3.Compatible.csproj -c Release
-          $compatExe = "TubaWinUi3.Compatible/bin/Release/net45/图吧工具箱Winui3兼容版.exe"
-          if (Test-Path -LiteralPath $compatExe) {
-            Write-Host "Compatible edition built successfully"
-            $size = [math]::Round((Get-Item -LiteralPath $compatExe).Length / 1MB, 1)
+          dotnet publish TubaWinUi3.PECompatible/TubaWinUi3.PECompatible.csproj `
+            -c Release `
+            -r ${{ matrix.rid }} `
+            -o publish_pecompat_${{ matrix.arch }}
+          $peExe = "publish_pecompat_${{ matrix.arch }}/图吧工具箱PE兼容版.exe"
+          if (Test-Path -LiteralPath $peExe) {
+            Write-Host "PE compatible edition published successfully"
+            $size = [math]::Round((Get-Item -LiteralPath $peExe).Length / 1MB, 1)
             Write-Host "  Size: $size MB"
           } else {
-            Write-Host "::warning::Compatible edition exe not found at $compatExe"
+            Write-Host "::warning::PE compatible edition exe not found at $peExe"
           }
 
       - name: Create portable zip (src/ layout with launcher)
@@ -239,10 +242,10 @@ jobs:
 
           Copy-Item -LiteralPath "Launcher\bin\图吧工具箱WinUI3_${{ matrix.arch }}.exe" -Destination (Join-Path $stagingDir '图吧工具箱WinUI3.exe') -Force
 
-          $compatExe = "TubaWinUi3.Compatible/bin/Release/net45/图吧工具箱Winui3兼容版.exe"
-          if (Test-Path -LiteralPath $compatExe) {
-            Copy-Item -LiteralPath $compatExe -Destination (Join-Path $stagingDir '图吧工具箱Winui3兼容版.exe') -Force
-            Write-Host "Added compatible edition to portable zip"
+          $peExe = "publish_pecompat_${{ matrix.arch }}/图吧工具箱PE兼容版.exe"
+          if (Test-Path -LiteralPath $peExe) {
+            Copy-Item -LiteralPath $peExe -Destination (Join-Path $stagingDir '图吧工具箱PE兼容版.exe') -Force
+            Write-Host "Added PE compatible edition to portable zip"
           }
 
           Compress-Archive -Path "$stagingDir\*" `
@@ -303,10 +306,10 @@ jobs:
 
           Copy-Item -LiteralPath "Launcher\bin\图吧工具箱WinUI3_x64.exe" -Destination (Join-Path $stagingDir '图吧工具箱WinUI3.exe') -Force
 
-          $compatExe = "TubaWinUi3.Compatible/bin/Release/net45/图吧工具箱Winui3兼容版.exe"
-          if (Test-Path -LiteralPath $compatExe) {
-            Copy-Item -LiteralPath $compatExe -Destination (Join-Path $stagingDir '图吧工具箱Winui3兼容版.exe') -Force
-            Write-Host "Added compatible edition to lite portable zip"
+          $peExe = "publish_pecompat_x64/图吧工具箱PE兼容版.exe"
+          if (Test-Path -LiteralPath $peExe) {
+            Copy-Item -LiteralPath $peExe -Destination (Join-Path $stagingDir '图吧工具箱PE兼容版.exe') -Force
+            Write-Host "Added PE compatible edition to lite portable zip"
           }
 
           Compress-Archive -Path "$stagingDir\*" `

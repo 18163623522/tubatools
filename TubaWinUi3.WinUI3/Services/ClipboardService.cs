@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.WindowsRuntime;
 using TubaWinUi3.Services.Telemetry;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage.Streams;
@@ -76,7 +77,7 @@ internal static class ClipboardService
         if (string.IsNullOrEmpty(text)) return new ClipboardCopyResult(true, 0, null);
 
         return await RetryCoreAsync(
-            attempt: _ => WriteText(text!, flush),
+            attempt: _ => Task.FromResult(WriteText(text!, flush)),
             delaysMs: RetryDelaysMs,
             delayAsync: static ms => Task.Delay(ms)).ConfigureAwait(true);
     }
@@ -92,24 +93,47 @@ internal static class ClipboardService
     }
 
     /// <summary>
-    /// 把位图写入剪贴板（硬件信息页「截图」按钮）。流必须每次尝试重建：
+    /// 把位图写入剪贴板（硬件信息页「截图」按钮）。引用必须每次尝试重建：
     /// 上一次的 DataPackage 可能仍被剪贴板持有，复用一个已消费的流会失败。
+    /// 只有异步版本 —— 装填流的写入本身就要 await（见 <see cref="CreateBitmapReferenceAsync"/>）。
     /// </summary>
     /// <param name="referenceFactory">参数为尝试序号（从 0 开始），每次尝试都会调用一次。</param>
-    public static ClipboardCopyResult TrySetBitmap(Func<int, RandomAccessStreamReference> referenceFactory)
+    /// <param name="flush">成功后是否调用 <c>Clipboard.Flush()</c>（应用退出后内容仍可粘贴）。</param>
+    public static async Task<ClipboardCopyResult> TrySetBitmapAsync(
+        Func<int, Task<RandomAccessStreamReference>> referenceFactory,
+        bool flush = false)
     {
         ArgumentNullException.ThrowIfNull(referenceFactory);
 
-        return RetryCore(
-            attempt: attemptIndex =>
+        return await RetryCoreAsync(
+            attempt: async attemptIndex =>
             {
                 var package = new DataPackage { RequestedOperation = DataPackageOperation.Copy };
-                package.SetBitmap(referenceFactory(attemptIndex));
+                package.SetBitmap(await referenceFactory(attemptIndex).ConfigureAwait(true));
                 Clipboard.SetContent(package);
+                if (flush) Clipboard.Flush();
                 return new ClipboardCopyResult(true, 0, null);
             },
             delaysMs: RetryDelaysMs,
-            sleepMs: Thread.Sleep);
+            delayAsync: static ms => Task.Delay(ms)).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// 把编码后的图片字节（截图当前为 PNG）包成剪贴板位图引用。
+    ///
+    /// 直接用流的 WriteAsync 写入，而不是 DataWriter：DataWriter 在 Dispose 时会关闭
+    /// 底层流（除非先 DetachStream），且 WriteBytes 只写内部缓冲（要 StoreAsync 才落流）。
+    /// 两条都踩过的后果是每次复制都抛 ObjectDisposedException（0x80000013），
+    /// 界面却提示「剪贴板被其他程序占用」。
+    /// </summary>
+    internal static async Task<RandomAccessStreamReference> CreateBitmapReferenceAsync(byte[] bytes)
+    {
+        ArgumentNullException.ThrowIfNull(bytes);
+
+        var stream = new InMemoryRandomAccessStream();
+        await stream.WriteAsync(bytes.AsBuffer());
+        stream.Seek(0);
+        return RandomAccessStreamReference.CreateFromStream(stream);
     }
 
     /// <summary>
@@ -134,18 +158,18 @@ internal static class ClipboardService
         return result;
     }
 
-    /// <summary><see cref="RetryCore"/> 的异步版本（把等待换成 Task.Delay）。</summary>
+    /// <summary><see cref="RetryCore"/> 的异步版本（尝试与等待都不阻塞调用线程）。</summary>
     internal static async Task<ClipboardCopyResult> RetryCoreAsync(
-        Func<int, ClipboardCopyResult> attempt,
+        Func<int, Task<ClipboardCopyResult>> attempt,
         int[] delaysMs,
         Func<int, Task> delayAsync)
     {
-        var result = RunAttempt(attempt, 0);
+        var result = await RunAttemptAsync(attempt, 0).ConfigureAwait(true);
 
         for (var i = 0; result is { Success: false } && IsRetryable(result.HResult) && i < delaysMs.Length; i++)
         {
             await delayAsync(delaysMs[i]).ConfigureAwait(true);
-            result = RunAttempt(attempt, i + 1);
+            result = await RunAttemptAsync(attempt, i + 1).ConfigureAwait(true);
         }
 
         if (!result.Success) ReportFailure(result);
@@ -158,6 +182,21 @@ internal static class ClipboardService
         try
         {
             return attempt(attemptIndex);
+        }
+        catch (Exception ex)
+        {
+            return new ClipboardCopyResult(false, ex.HResult, ex);
+        }
+    }
+
+    /// <summary><see cref="RunAttempt"/> 的异步版本；异常同样收成失败结果。</summary>
+    private static async Task<ClipboardCopyResult> RunAttemptAsync(
+        Func<int, Task<ClipboardCopyResult>> attempt,
+        int attemptIndex)
+    {
+        try
+        {
+            return await attempt(attemptIndex).ConfigureAwait(true);
         }
         catch (Exception ex)
         {

@@ -739,7 +739,8 @@ public sealed partial class HardwarePage : Page, ILocalizablePage
             finalBmp.Save(ms, ImageFormat.Png);
             var bytes = ms.ToArray();
 
-            var result = ClipboardService.TrySetBitmap(_ => BitmapFactory.Create(bytes));
+            var result = await ClipboardService.TrySetBitmapAsync(
+                _ => ClipboardService.CreateBitmapReferenceAsync(bytes), flush: true);
             if (!result.Success)
             {
                 ShowStatusBar(LocalizationService.L("Hw_ScreenshotFailed", "截图失败"),
@@ -757,22 +758,6 @@ public sealed partial class HardwarePage : Page, ILocalizablePage
         finally
         {
             _isScreenshotting = false;
-        }
-    }
-
-    /// <summary>把 PNG 字节包成剪贴板位图引用；每次尝试都要新建（旧流可能已被剪贴板消费）。</summary>
-    private static class BitmapFactory
-    {
-        public static Windows.Storage.Streams.RandomAccessStreamReference Create(byte[] pngBytes)
-        {
-            var stream = new Windows.Storage.Streams.InMemoryRandomAccessStream();
-            // 用 DataWriter 同步写入：不加锁、不等 IAsyncAction（避免在 UI 线程上阻塞等待）
-            using (var writer = new Windows.Storage.Streams.DataWriter(stream))
-            {
-                writer.WriteBytes(pngBytes);
-            }
-            stream.Seek(0);
-            return Windows.Storage.Streams.RandomAccessStreamReference.CreateFromStream(stream);
         }
     }
 

@@ -4,11 +4,12 @@
 
 A WinUI 3 (Windows App SDK / .NET 10) Chinese-language PC hardware toolbox ("图吧工具箱"). Catalogs and launches third-party diagnostic executables from a local `Tools/` folder, shows WMI/LibreHardwareMonitor hardware info, ships ~30 built-in utility tools, and does real-time hardware monitoring with an FPS overlay. UI strings are hardcoded Chinese — there is no resource/localization system.
 
-## Solution layout (4 projects in `TubaWinUi3.sln`)
+## Solution layout (4 projects in `TubaWinUi3.sln`, plus the standalone PE edition below)
 
 - `TubaWinUi3.WinUI3/` — **the app**. The only project you normally build/run; `dotnet` commands target `TubaWinUi3.WinUI3/TubaWinUi3.csproj`.
 - `TubaWinUI3.BackEnd/` — a small **NativeAOT helper process** (`TubaWinUI3.BackEnd.exe`) used by the 主动拦截 (active intercept) feature; managed by `ActiveInterceptService`. The main csproj's `CopyBackendForBuild` target copies its framework-dependent output after every `dotnet build`, and `PublishBackend` builds/publishes the AOT version during `dotnet publish`.
-- `TubaWinUi3.Compatible/` — a separate **.NET Framework 4.8 WinForms** edition (`图吧工具箱Winui3兼容版.exe`, ReaLTaiizor Crown theme + Costura.Fody single-file). NOT WinUI 3 and NOT .NET 10 — different toolchain, different conventions. Built by CI and bundled into portable zips. Do not mix its patterns into the main app. Supports tools.json cross-category (`category` + `categories`) copies and splits each arch variant (x64/ARM64/x86) into its own tool card; `builtin` placement entries are skipped (WinForms can't run WinUI built-ins).
+- `TubaWinUi3.Compatible/` — a separate **.NET Framework 4.8 WinForms** edition (`图吧工具箱Winui3兼容版.exe`, ReaLTaiizor Crown theme + Costura.Fody single-file). NOT WinUI 3 and NOT .NET 10 — different toolchain, different conventions. **No longer bundled into portable zips** — that slot is taken by the PE edition (next bullet). Do not mix its patterns into the main app. Supports tools.json cross-category (`category` + `categories`) copies and splits each arch variant (x64/ARM64/x86) into its own tool card; `builtin` placement entries are skipped (WinForms can't run WinUI built-ins).
+- `TubaWinUi3.PECompatible/` — **PE 兼容版** (`图吧工具箱PE兼容版.exe`; MewUI Win32 host + GDI backend/text engine, .NET 10 self-contained single-file). Not in the `.sln` — target its csproj directly. Shares the Compatible project's models/services via linked `Compile` items; CI publishes it per-RID and bundles the exe into the portable/lite zips. Its Debug build auto-copies the output into the main app's Debug dir (`CopyToWinUiDebugDir` target → `TubaWinUi3.WinUI3/bin/**/Debug/<tfm>/win-<arch>/图吧工具箱PE兼容版/`), where the shared services walk up parent dirs to find `Tools/` + `Metadata/` — that's the intended local debugging flow.
 - `TubaWinUi3.Tests/` — **xUnit** tests (xUnit 2.9 + coverlet), referencing the main project via `InternalsVisibleTo`.
 
 ## Build, run, test
@@ -143,6 +144,17 @@ dotnet test --filter "FullyQualifiedName~ToolCatalogTests"        # one class / 
 - 注册表读写一律用 `RegistryView.Registry64` 显式打开（x86 构建下 `HKLM\SYSTEM\...` 会被重定向到 Wow6432Node，读不到真实配置）。
 - 测试：`TimeSyncTests`（预设完整性、对等列表与标志位、地址校验、注册表字符串反查、SNTP 报文与偏移数学、w32tm 中英文/真实机器输出解析、健康检查判定、设置落盘）。
 
+### 硬件详细信息（HardwareDetailPage）— 瀑布流参数卡片
+
+- 「硬件信息」页 →「详细信息」= `Pages/HardwareDetailPage`：15 个信息分区（系统/设备/处理器/主板/内存/显卡/NPU/硬盘/显示器/声卡/网卡/电池/安全/USB/其他设备），由 `Controls/CardBoard`（自制瀑布流面板）排布；空分区自动隐藏（台机无电池、无 NPU 就不显示）。
+- **布局数学是纯函数**：`Controls/CardLayoutMath`（列数解析/最短列/堆叠排布/`DistributeFill` 铺满补偿）与界面无关，`HardwareDetailTests` 覆盖极端输入。`CardBoard` 每次测量都按自然高度重新贪心分列（没有「钉住的列」），任何内容变化后列高都保持均衡。
+- **完全铺满（唯一策略）**：页面按「视口高度 − 页头/实时区」算出 `CardBoard.FillHeight`，内容比它矮时把每列缺口平均补给该列的**单列卡片**（`DistributeFill`，跨列卡不动）并重排一次——各列底部对齐、填满窗口；内容更高时照常滚动。宽度方向由 `MaxColumns=6` + 无最大宽度限制实现「宽屏自动更多列」。
+- **不提供手动排布（重要，勿加回来）**：按产品要求删除了拖动换列/换位、边缘缩放、右键选宽度、布局持久化（`HwDetailLayout`）与「重置布局」按钮。历史教训：拖拽/缩放依赖小组件命中（无背景的 Grid、3px 圆点手柄）反复被反馈「拖不动 / 改不了大小」，手动交互的收益远低于维护成本。排布完全交给默认策略：分区定义顺序 + 默认跨度 + 贪心最短列 + 铺满对齐；要调布局就改这里的默认值，而不是加交互。
+- **采集**：`HardwareInfoService.BuildDetailData` 并行采集各分区（`Safe()` 隔离单分区失败；授权 4s / TPM 5s 限时，避免慢 WMI 提供程序拖垮首开）。新增字段/分区时：`HardwareDetailData` 加模型 → 服务加采集 → 页面的 `SectionDefinitions` 加定义（枚举成员必须都有定义，`SectionDefinitions_CoverEveryDetailPart` 拦截漏配）→ `BuildItems` 加行 → `LocalizationService.TranslateHardwareLabel` 加标签翻译（中文数据键只在显示层翻译）。
+- **分区图标**：`Assets/HwIcons/<icon>.svg`（每分区一个，Fluent 规范双色 1.5 描边，`HardwareIcons_FollowFluentSpecifications` 校验），`Services/HardwareIconService` 加载；缺失只退回纯标题，不报错。
+- 特殊数据源：磁盘分区样式走 `IOCTL_DISK_GET_DRIVE_LAYOUT_EX`（WMI 没有，需管理员）；SMART（健康/通电时间/写入量）复用 `DiskSmartReader`；DirectX = 注册表 d3d 文件版本 + 系统内部版本判定；.NET = 注册表 Release；TPM/VBS 走 DeviceGuard/TPM 命名空间。非管理员下的缺失项静默跳过（应用本身管理员启动）。
+- 回归：`HardwareDetailTests`（布局数学、Windows 系统信息映射、图标资源、本地化键覆盖）。
+
 ### Adding a built-in tool
 1. New class in `TubaWinUi3.WinUI3/Services/BuiltinTools/` implementing `IBuiltinTool`.
 2. Pick `BuiltinToolKind`: `Dialog` / `BackgroundTask` / `ProgressTask` / `InstantAction`.
@@ -208,7 +220,7 @@ The "文件传输" feature spans three pieces with their own toolchains — none
 
 > **2026-09-30 修复**：`TubaWinUi3.Tests/NavIconTests.cs` 引用的 `NavIconCatalog` 从未提交（`Assets/NavIcons/` 在仓库、git 全历史、已发布安装包里都不存在），测试项目因此一直编译失败（13 个 CS0103）→ **已删除该孤儿测试**。被删掉的规格（如果以后要做侧边栏导航图标）：每个固定导航项（首页/常用/硬件信息/内置工具/社区工具…）与每个已知工具分类各需一个 `Assets/NavIcons/<slug>.svg`，slug 一一对应不重复，图标写法要过 `IconAssetValidation.ValidateAll`（Fluent 规范：viewBox 24、收在 2..22 网格、1.5 描边、圆头圆角、≥2 色）与 `ValidateRasterizes`（光栅化非空白）；`IconAssetValidation` 仍在被 `BuiltinIconTests` 使用，不要一起删。
 
-- `build-release.yml` — bumps `<Version>` in **both** `.csproj`s and `#define MyAppVersion` in all `installer*.iss`, publishes x64/x86/ARM64 portable + Inno installer + x64-lite (`ExcludeToolsFromPublish=true` + `.lite_build` marker), builds the Compatible edition, restores `.pri`, generates the changelog via **DeepSeek** (`DEEPSEEK_API_KEY`), creates the GitHub release, and optionally mirrors to **GitCode/AtomGit** (`GITCODE_ACCESS_TOKEN`). Portable zips are staged as a `src/` folder plus the native `Launcher\bin\图吧工具箱WinUI3_<arch>.exe` (renamed `图吧工具箱WinUI3.exe`).
+- `build-release.yml` — bumps `<Version>` in **both** `.csproj`s and `#define MyAppVersion` in all `installer*.iss`, publishes x64/x86/ARM64 portable + Inno installer + x64-lite (`ExcludeToolsFromPublish=true` + `.lite_build` marker), publishes the PE edition (self-contained single-file) for the zips, restores `.pri`, generates the changelog via **DeepSeek** (`DEEPSEEK_API_KEY`), creates the GitHub release, and optionally mirrors to **GitCode/AtomGit** (`GITCODE_ACCESS_TOKEN`). Portable zips are staged as a `src/` folder plus the native `Launcher\bin\图吧工具箱WinUI3_<arch>.exe` (renamed `图吧工具箱WinUI3.exe`) and `图吧工具箱PE兼容版.exe` at the zip root.
 - `android-build.yml` — Gradle debug APK for `android-tuba-installer/`; the only workflow that runs tests.
 - `sync-to-gitcode.yml` — re-uploads assets from an existing GitHub Release to GitCode via AtomGit API.
 

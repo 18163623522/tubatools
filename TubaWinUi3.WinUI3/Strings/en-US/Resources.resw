@@ -3325,4 +3325,205 @@ Permissions
   <data name="Hw_Field_PrimaryDisplay" xml:space="preserve">
     <value>Primary display</value>
   </data>
+  <data name="Hw_Field_OperatingSystem" xml:space="preserve">
+    <value>OS</value>
+  </data>
+  <data name="Hw_Field_Build" xml:space="preserve">
+    <value>Build</value>
+  </data>
+  <data name="Hw_Field_SystemArchitecture" xml:space="preserve">
+    <value>Architecture</value>
+  </data>
+  <data name="Hw_Field_InstallDate" xml:space="preserve">
+    <value>Install date</value>
+  </data>
+  <data name="Hw_Field_InstallLanguage" xml:space="preserve">
+    <value>Install language</value>
+  </data>
+  <data name="Hw_Field_ComputerName" xml:space="preserve">
+    <value>Computer name</value>
+  </data>
+  <data name="Hw_Field_Domain" xml:space="preserve">
+    <value>Domain / Workgroup</value>
+  </data>
+  <data name="Hw_Field_LicenseStatus" xml:space="preserve">
+    <value>License status</value>
+  </data>
+  <data name="Hw_Field_LicenseChannel" xml:space="preserve">
+    <value>License channel</value>
+  </data>
+  <data name="Hw_Field_ProductKey" xml:space="preserve">
+    <value>Product key</value>
+  </data>
+  <data name="Hw_Field_ProductId" xml:space="preserve">
+    <value>Product ID</value>
+  </data>
+  <data name="Hw_Field_RegisteredOwner" xml:space="preserve">
+    <value>Registered owner</value>
+  </data>
+  <data name="Hw_Field_DirectX" xml:space="preserve">
+    <value>DirectX</value>
+  </data>
+  <data name="Hw_Field_DotNet" xml:space="preserve">
+    <value>.NET Framework</value>
+  </data>
+  <data name="Hw_Field_Scaling" xml:space="preserve">
+    <value>Display scaling</value>
+  </data>
+  <data name="Hw_Field_SystemDrive" xml:space="preserve">
+    <value>System drive</value>
+  </data>
+  <data name="Hw_Field_SystemDir" xml:space="preserve">
+    <value>Windows directory</value>
+  </data>
+  <data name="Hw_Field_PhysicalMemory" xml:space="preserve">
+    <value>Physical memory (free / total)</value>
+  </data>
+  <data name="Hw_Field_VirtualMemory" xml:space="preserve">
+    <value>Virtual memory (free / total)</value>
+  </data>
+  <data name="Hw_Field_PageFile" xml:space="preserve">
+    <value>Page file</value>
+  </data>
+  <data name="Hw_Field_Series" xml:space="preserve">
+    <value>Family</value>
+  </data>
+  <data name="Hw_Field_Sku" xml:space="preserve">
+    <value>SKU</value>
+  </data>
+  <data name="Hw_Field_SystemType" xml:space="preserve">
+    <value>System type</value>
+  </data>
+  <data name="Hw_Field_PcType" xml:space="preserve">
+    <value>PC type</value>
+  </data>
+  <data name="Hw_Field_Chassis" xml:space="preserve">
+    <value>Chassis type</value>
+  </data>
+  <data name="Hw_Field_Uuid" xml:space="preserve">
+    <value>Product UUID</value>
+  </data>
+  <data name="Hw_Field_ProductVersion" xml:space="preserve">
+    <value>Product version</value>
+  </data>
+  <data name="Hw_Field_FirmwareMode" xml:space="preserve">
+    <value>Firmware mode</value>
+  </data>
+  <data name="Hw_Field_DataWidth" xml:space="preserve">
+    <value>Data width</value>
+  </data>
+  <data name="Hw_Field_Virtualization" xml:space="preserve">
+    <value>Hardware virtualization</value>
+  </data>
+  <data name="Hw_Field_Slat" xml:space="preserve">
+    <value>Second-level address translation</value>
+  </data>
+  <data name="Hw_Field_BiosSerial" xml:space="preserve">
+    <value>BIOS serial number</value>
+  </data>
+  <data name="Hw_Field_Smbios" xml:space="preserve">
+    <value>SMBIOS version</value>
+  </data>
+  <data name="Hw_Field_MaxCapacity" xml:space="preserve">
+    <value>Max capacity</value>
+  </data>
+  <data name="Hw_Field_Vendor" xml:space="preserve">
+    <value>Vendor</value>
+  </data>
+  <data name="Hw_Field_DeviceId" xml:space="preserve">
+    <value>Device ID</value>
+  </data>
+  <data name="Hw_Field_PartitionStyle" xml:space="preserve">
+    <value>Partition style</value>
+  </data>
+  <data name="Hw_Field_Rotation" xml:space="preserve">
+    <value>Rotation rate</value>
+  </data>
+  <data name="Hw_Field_Health" xml:space="preserve">
+    <value>Health</value>
+  </data>
+  <data name="Hw_Field_PowerOnHours" xml:space="preserve">
+    <value>Power-on hours</value>
+  </data>
+  <data name="Hw_Field_PowerOnCount" xml:space="preserve">
+    <value>Power-on count</value>
+  </data>
+  <data name="Hw_Field_TotalWritten" xml:space="preserve">
+    <value>Total written</value>
+  </data>
+  <data name="Hw_Field_MadeDate" xml:space="preserve">
+    <value>Manufactured</value>
+  </data>
+  <data name="Hw_Field_ConnStatus" xml:space="preserve">
+    <value>Connection</value>
+  </data>
+  <data name="Hw_Field_IpAddress" xml:space="preserve">
+    <value>IP address</value>
+  </data>
+  <data name="Hw_Field_Gateway" xml:space="preserve">
+    <value>Default gateway</value>
+  </data>
+  <data name="Hw_Field_Chemistry" xml:space="preserve">
+    <value>Chemistry</value>
+  </data>
+  <data name="Hw_Field_DesignCapacity" xml:space="preserve">
+    <value>Design capacity</value>
+  </data>
+  <data name="Hw_Field_FullCharge" xml:space="preserve">
+    <value>Full charge capacity</value>
+  </data>
+  <data name="Hw_Field_BatteryHealth" xml:space="preserve">
+    <value>Battery health</value>
+  </data>
+  <data name="Hw_Field_CycleCount" xml:space="preserve">
+    <value>Cycle count</value>
+  </data>
+  <data name="Hw_Field_TpmVersion" xml:space="preserve">
+    <value>TPM version</value>
+  </data>
+  <data name="Hw_Field_TpmVendor" xml:space="preserve">
+    <value>TPM vendor</value>
+  </data>
+  <data name="Hw_Field_TpmState" xml:space="preserve">
+    <value>TPM state</value>
+  </data>
+  <data name="Hw_Field_SecureBoot" xml:space="preserve">
+    <value>Secure Boot</value>
+  </data>
+  <data name="Hw_Field_Vbs" xml:space="preserve">
+    <value>Virtualization-based security</value>
+  </data>
+  <data name="Hw_Field_Hvci" xml:space="preserve">
+    <value>Memory integrity</value>
+  </data>
+  <data name="Hw_Field_Hypervisor" xml:space="preserve">
+    <value>Hypervisor</value>
+  </data>
+  <data name="Hw_Field_Controller" xml:space="preserve">
+    <value>Controller</value>
+  </data>
+  <data name="Hw_Field_Device" xml:space="preserve">
+    <value>Device</value>
+  </data>
+  <data name="Hw_Field_DeviceTotal" xml:space="preserve">
+    <value>Device count</value>
+  </data>
+  <data name="Hw_Label_Battery" xml:space="preserve">
+    <value>Battery</value>
+  </data>
+  <data name="Hw_Label_Security" xml:space="preserve">
+    <value>Security</value>
+  </data>
+  <data name="Hw_Label_Usb" xml:space="preserve">
+    <value>USB</value>
+  </data>
+  <data name="Hw_Label_Devices" xml:space="preserve">
+    <value>Other devices</value>
+  </data>
+  <data name="HwDetail_RatedSpeed" xml:space="preserve">
+    <value>Rated {0}</value>
+  </data>
+  <data name="HwDetail_UsbTruncated" xml:space="preserve">
+    <value>{0} total (showing first {1})</value>
+  </data>
 </root>

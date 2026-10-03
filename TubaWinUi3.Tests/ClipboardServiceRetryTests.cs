@@ -172,7 +172,7 @@ namespace TubaWinUi3.Tests
             var delays = new List<int>();
 
             var result = await ClipboardService.RetryCoreAsync(
-                attempt: _ => ++attempts == 1 ? Fail(CantOpen) : Ok(),
+                attempt: _ => Task.FromResult(++attempts == 1 ? Fail(CantOpen) : Ok()),
                 delaysMs: [10, 20],
                 delayAsync: ms => { delays.Add(ms); return Task.CompletedTask; });
 
@@ -188,13 +188,27 @@ namespace TubaWinUi3.Tests
             var delays = new List<int>();
 
             var result = await ClipboardService.RetryCoreAsync(
-                attempt: _ => { attempts++; return Fail(WrongThread); },
+                attempt: _ => { attempts++; return Task.FromResult(Fail(WrongThread)); },
                 delaysMs: [10, 20],
                 delayAsync: ms => { delays.Add(ms); return Task.CompletedTask; });
 
             Assert.False(result.Success);
             Assert.Equal(1, attempts);
             Assert.Empty(delays);
+        }
+
+        [Fact]
+        public async Task RetryCoreAsync_AsyncAttemptThrows_ReturnsFailureInsteadOfThrowing()
+        {
+            // 回归：装填位图流的异步尝试抛 ObjectDisposedException（0x80000013）时，
+            // 必须收成失败结果（否则从 Click 处理器里逃出去就是闪退）
+            var result = await ClipboardService.RetryCoreAsync(
+                attempt: _ => throw new ObjectDisposedException("该对象已关闭"),
+                delaysMs: NoDelays,
+                delayAsync: _ => Task.CompletedTask);
+
+            Assert.False(result.Success);
+            Assert.IsType<ObjectDisposedException>(result.Error);
         }
     }
 }

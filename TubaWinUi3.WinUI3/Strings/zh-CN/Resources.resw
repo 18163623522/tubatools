@@ -3341,4 +3341,205 @@
   <data name="Hw_Field_PrimaryDisplay" xml:space="preserve">
     <value>主显示器</value>
   </data>
+  <data name="Hw_Field_OperatingSystem" xml:space="preserve">
+    <value>操作系统</value>
+  </data>
+  <data name="Hw_Field_Build" xml:space="preserve">
+    <value>内部版本</value>
+  </data>
+  <data name="Hw_Field_SystemArchitecture" xml:space="preserve">
+    <value>系统架构</value>
+  </data>
+  <data name="Hw_Field_InstallDate" xml:space="preserve">
+    <value>安装日期</value>
+  </data>
+  <data name="Hw_Field_InstallLanguage" xml:space="preserve">
+    <value>安装语言</value>
+  </data>
+  <data name="Hw_Field_ComputerName" xml:space="preserve">
+    <value>计算机名</value>
+  </data>
+  <data name="Hw_Field_Domain" xml:space="preserve">
+    <value>域或工作组</value>
+  </data>
+  <data name="Hw_Field_LicenseStatus" xml:space="preserve">
+    <value>授权状态</value>
+  </data>
+  <data name="Hw_Field_LicenseChannel" xml:space="preserve">
+    <value>授权通道</value>
+  </data>
+  <data name="Hw_Field_ProductKey" xml:space="preserve">
+    <value>产品密钥</value>
+  </data>
+  <data name="Hw_Field_ProductId" xml:space="preserve">
+    <value>产品 ID</value>
+  </data>
+  <data name="Hw_Field_RegisteredOwner" xml:space="preserve">
+    <value>注册用户</value>
+  </data>
+  <data name="Hw_Field_DirectX" xml:space="preserve">
+    <value>DirectX</value>
+  </data>
+  <data name="Hw_Field_DotNet" xml:space="preserve">
+    <value>.NET Framework</value>
+  </data>
+  <data name="Hw_Field_Scaling" xml:space="preserve">
+    <value>显示缩放</value>
+  </data>
+  <data name="Hw_Field_SystemDrive" xml:space="preserve">
+    <value>系统盘</value>
+  </data>
+  <data name="Hw_Field_SystemDir" xml:space="preserve">
+    <value>系统目录</value>
+  </data>
+  <data name="Hw_Field_PhysicalMemory" xml:space="preserve">
+    <value>物理内存（可用/总量）</value>
+  </data>
+  <data name="Hw_Field_VirtualMemory" xml:space="preserve">
+    <value>虚拟内存（可用/总量）</value>
+  </data>
+  <data name="Hw_Field_PageFile" xml:space="preserve">
+    <value>页面文件</value>
+  </data>
+  <data name="Hw_Field_Series" xml:space="preserve">
+    <value>产品系列</value>
+  </data>
+  <data name="Hw_Field_Sku" xml:space="preserve">
+    <value>SKU</value>
+  </data>
+  <data name="Hw_Field_SystemType" xml:space="preserve">
+    <value>系统类型</value>
+  </data>
+  <data name="Hw_Field_PcType" xml:space="preserve">
+    <value>机型</value>
+  </data>
+  <data name="Hw_Field_Chassis" xml:space="preserve">
+    <value>机箱类型</value>
+  </data>
+  <data name="Hw_Field_Uuid" xml:space="preserve">
+    <value>产品 UUID</value>
+  </data>
+  <data name="Hw_Field_ProductVersion" xml:space="preserve">
+    <value>产品版本</value>
+  </data>
+  <data name="Hw_Field_FirmwareMode" xml:space="preserve">
+    <value>固件模式</value>
+  </data>
+  <data name="Hw_Field_DataWidth" xml:space="preserve">
+    <value>数据宽度</value>
+  </data>
+  <data name="Hw_Field_Virtualization" xml:space="preserve">
+    <value>硬件虚拟化</value>
+  </data>
+  <data name="Hw_Field_Slat" xml:space="preserve">
+    <value>二级地址转换</value>
+  </data>
+  <data name="Hw_Field_BiosSerial" xml:space="preserve">
+    <value>BIOS 序列号</value>
+  </data>
+  <data name="Hw_Field_Smbios" xml:space="preserve">
+    <value>SMBIOS 版本</value>
+  </data>
+  <data name="Hw_Field_MaxCapacity" xml:space="preserve">
+    <value>最大容量</value>
+  </data>
+  <data name="Hw_Field_Vendor" xml:space="preserve">
+    <value>厂商</value>
+  </data>
+  <data name="Hw_Field_DeviceId" xml:space="preserve">
+    <value>设备 ID</value>
+  </data>
+  <data name="Hw_Field_PartitionStyle" xml:space="preserve">
+    <value>分区样式</value>
+  </data>
+  <data name="Hw_Field_Rotation" xml:space="preserve">
+    <value>转速</value>
+  </data>
+  <data name="Hw_Field_Health" xml:space="preserve">
+    <value>健康状态</value>
+  </data>
+  <data name="Hw_Field_PowerOnHours" xml:space="preserve">
+    <value>通电时间</value>
+  </data>
+  <data name="Hw_Field_PowerOnCount" xml:space="preserve">
+    <value>通电次数</value>
+  </data>
+  <data name="Hw_Field_TotalWritten" xml:space="preserve">
+    <value>总写入量</value>
+  </data>
+  <data name="Hw_Field_MadeDate" xml:space="preserve">
+    <value>制造日期</value>
+  </data>
+  <data name="Hw_Field_ConnStatus" xml:space="preserve">
+    <value>连接状态</value>
+  </data>
+  <data name="Hw_Field_IpAddress" xml:space="preserve">
+    <value>IP 地址</value>
+  </data>
+  <data name="Hw_Field_Gateway" xml:space="preserve">
+    <value>默认网关</value>
+  </data>
+  <data name="Hw_Field_Chemistry" xml:space="preserve">
+    <value>化学类型</value>
+  </data>
+  <data name="Hw_Field_DesignCapacity" xml:space="preserve">
+    <value>设计容量</value>
+  </data>
+  <data name="Hw_Field_FullCharge" xml:space="preserve">
+    <value>满充容量</value>
+  </data>
+  <data name="Hw_Field_BatteryHealth" xml:space="preserve">
+    <value>电池健康</value>
+  </data>
+  <data name="Hw_Field_CycleCount" xml:space="preserve">
+    <value>循环次数</value>
+  </data>
+  <data name="Hw_Field_TpmVersion" xml:space="preserve">
+    <value>TPM 版本</value>
+  </data>
+  <data name="Hw_Field_TpmVendor" xml:space="preserve">
+    <value>TPM 厂商</value>
+  </data>
+  <data name="Hw_Field_TpmState" xml:space="preserve">
+    <value>TPM 状态</value>
+  </data>
+  <data name="Hw_Field_SecureBoot" xml:space="preserve">
+    <value>安全启动</value>
+  </data>
+  <data name="Hw_Field_Vbs" xml:space="preserve">
+    <value>虚拟化安全</value>
+  </data>
+  <data name="Hw_Field_Hvci" xml:space="preserve">
+    <value>内存完整性</value>
+  </data>
+  <data name="Hw_Field_Hypervisor" xml:space="preserve">
+    <value>虚拟机监控程序</value>
+  </data>
+  <data name="Hw_Field_Controller" xml:space="preserve">
+    <value>控制器</value>
+  </data>
+  <data name="Hw_Field_Device" xml:space="preserve">
+    <value>设备</value>
+  </data>
+  <data name="Hw_Field_DeviceTotal" xml:space="preserve">
+    <value>设备总数</value>
+  </data>
+  <data name="Hw_Label_Battery" xml:space="preserve">
+    <value>电池</value>
+  </data>
+  <data name="Hw_Label_Security" xml:space="preserve">
+    <value>安全</value>
+  </data>
+  <data name="Hw_Label_Usb" xml:space="preserve">
+    <value>USB</value>
+  </data>
+  <data name="Hw_Label_Devices" xml:space="preserve">
+    <value>其他设备</value>
+  </data>
+  <data name="HwDetail_RatedSpeed" xml:space="preserve">
+    <value>额定 {0}</value>
+  </data>
+  <data name="HwDetail_UsbTruncated" xml:space="preserve">
+    <value>{0} 个（仅显示前 {1} 个）</value>
+  </data>
 </root>

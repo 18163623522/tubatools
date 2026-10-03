@@ -1234,13 +1234,33 @@ h1{{font-size:28px;font-weight:600;margin-bottom:4px}}
     {
         var toolsRoot = ToolCatalog.ToolsRoot;
         if (Directory.Exists(toolsRoot))
-            foreach (var name in names) { var m = Directory.GetFiles(toolsRoot, name, SearchOption.AllDirectories); if (m.Length > 0) return m[0]; }
+            foreach (var name in names) { var m = TryFindFile(toolsRoot, name); if (m is not null) return m; }
 
         foreach (var name in names)
             foreach (var root in new[] { Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86) })
-                if (Directory.Exists(root)) { var c = Directory.GetFiles(root, name, SearchOption.AllDirectories); if (c.Length > 0) return c[0]; }
+                if (Directory.Exists(root)) { var c = TryFindFile(root, name); if (c is not null) return c; }
 
         return null;
+    }
+
+    /// <summary>递归查找单个文件；遇到无权限目录时跳过，不中断整个查找。</summary>
+    /// <remarks>不能退回 Directory.GetFiles(root, name, SearchOption.AllDirectories)：该重载 IgnoreInaccessible=false，
+    /// 在 Program Files 下碰到拒绝访问的目录（如系统 ReparsePoint「Windows NT\附件」）会抛 UnauthorizedAccessException，导致一键三烤直接报错。</remarks>
+    internal static string? TryFindFile(string root, string name)
+    {
+        try
+        {
+            return Directory.EnumerateFiles(root, name, new System.IO.EnumerationOptions
+            {
+                RecurseSubdirectories = true,
+                IgnoreInaccessible = true,
+                AttributesToSkip = FileAttributes.None,
+            }).FirstOrDefault();
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static void KillProcess(ref Process? proc)
