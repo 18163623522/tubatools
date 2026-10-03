@@ -27,6 +27,8 @@ public sealed partial class BenchmarkCloudPage : Page
 
 	private List<BenchmarkReportEntry> _myReports = new List<BenchmarkReportEntry>();
 
+	private List<BenchmarkLeaderboardEntry> _allLeaderboardEntries = new List<BenchmarkLeaderboardEntry>();
+
 	private bool _loaded;
 
 	private int _currentPage = -1;
@@ -36,8 +38,6 @@ public sealed partial class BenchmarkCloudPage : Page
 	private bool _hasMorePages;
 
 	private bool _isReportDetailBusy;
-
-	private string _currentSortBy = "gaming";
 
 	private Pivot MainPivot = null!;
 
@@ -92,6 +92,8 @@ public sealed partial class BenchmarkCloudPage : Page
 	private ProgressBar LeaderboardProgress = null!;
 
 	private ListView LeaderboardList = null!;
+
+	private ScrollViewer? _leaderboardScrollViewer;
 
 	private StackPanel LeaderboardEmpty = null!;
 
@@ -264,23 +266,16 @@ public sealed partial class BenchmarkCloudPage : Page
 		grid.Children.Add(LeaderboardProgress);
 		Grid.SetRow(LeaderboardProgress, 1);
 
-		var listScrollViewer = new ScrollViewer
-		{
-			VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-			HorizontalScrollMode = ScrollMode.Disabled,
-			VerticalScrollMode = ScrollMode.Auto
-		};
-		listScrollViewer.ViewChanged += LeaderboardScrollViewer_ViewChanged;
-
-		var listStackPanel = new StackPanel();
+		var listFooter = new StackPanel();
 
 		LeaderboardList = new ListView
 		{
 			Visibility = Visibility.Collapsed,
-			ItemTemplate = BuildLeaderboardItemTemplate()
+			ItemTemplate = BuildLeaderboardItemTemplate(),
+			Footer = listFooter
 		};
 		LeaderboardList.SelectionChanged += LeaderboardList_SelectionChanged;
-		listStackPanel.Children.Add(LeaderboardList);
+		LeaderboardList.Loaded += LeaderboardList_Loaded;
 
 		LoadMoreProgress = new ProgressBar
 		{
@@ -288,7 +283,7 @@ public sealed partial class BenchmarkCloudPage : Page
 			IsIndeterminate = true,
 			Margin = new Thickness(0.0, 4.0, 0.0, 4.0)
 		};
-		listStackPanel.Children.Add(LoadMoreProgress);
+		listFooter.Children.Add(LoadMoreProgress);
 
 		LoadMoreText = new TextBlock
 		{
@@ -299,12 +294,10 @@ public sealed partial class BenchmarkCloudPage : Page
 			Margin = new Thickness(0.0, 4.0, 0.0, 8.0),
 			Visibility = Visibility.Collapsed
 		};
-		listStackPanel.Children.Add(LoadMoreText);
+		listFooter.Children.Add(LoadMoreText);
 
-		listScrollViewer.Content = listStackPanel;
-
-		grid.Children.Add(listScrollViewer);
-		Grid.SetRow(listScrollViewer, 2);
+		grid.Children.Add(LeaderboardList);
+		Grid.SetRow(LeaderboardList, 2);
 
 		LeaderboardEmpty = new StackPanel
 		{
@@ -811,7 +804,6 @@ public sealed partial class BenchmarkCloudPage : Page
 		try
 		{
 			_allReports = await BenchmarkCloudService.GetAllReportsAsync(CancellationToken.None);
-			BenchmarkCloudService.SaveToCache(_allReports);
 			ReportCountText.Text = $"{_allReports.Count} 份报告 · {BenchmarkCloudService.CurrentSourceName}";
 			await RefreshLeaderboardAsync();
 			await LoadCompareCombos();
@@ -858,10 +850,10 @@ public sealed partial class BenchmarkCloudPage : Page
 			5 => "browser", 
 			_ => "gaming", 
 		};
-		_currentSortBy = sortBy;
 		_currentPage = -1;
 		_hasMorePages = false;
 		_leaderboard.Clear();
+		_allLeaderboardEntries.Clear();
 		LoadMoreProgress.Visibility = Visibility.Collapsed;
 		LoadMoreText.Visibility = Visibility.Collapsed;
 
@@ -869,38 +861,14 @@ public sealed partial class BenchmarkCloudPage : Page
 
 		try
 		{
-			var pageData = await BenchmarkCloudService.GetLeaderboardPageAsync(sortBy, 0, CancellationToken.None);
-			if (pageData != null)
-			{
-				_currentPage = 0;
-				_hasMorePages = BenchmarkCloudService.HasMorePages(sortBy, 0);
-				IEnumerable<BenchmarkLeaderboardRankEntry> source = pageData.Entries;
-				if (!string.IsNullOrWhiteSpace(filterText))
-					source = source.Where(e => e.CpuName.Contains(filterText, StringComparison.OrdinalIgnoreCase));
-				_leaderboard = source.Select((e, i) => new BenchmarkLeaderboardEntry
-				{
-					Rank = i + 1,
-					Report = e.ToReportEntry()
-				}).ToList();
-				LeaderboardList.ItemsSource = null;
-				LeaderboardList.ItemsSource = _leaderboard;
-				LeaderboardList.Visibility = _leaderboard.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-				LeaderboardEmpty.Visibility = _leaderboard.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-				UpdateLoadMoreUI(pageData.TotalEntries);
-				return;
-			}
-		}
-		catch
-		{
-		}
-
-		try
-		{
-			_leaderboard = await BenchmarkCloudService.GetLeaderboardAsync(sortBy, filterText, null, CancellationToken.None);
+			_allLeaderboardEntries = await BenchmarkCloudService.GetLeaderboardAsync(sortBy, filterText, null, CancellationToken.None);
+			_currentPage = 0;
+			_leaderboard = BenchmarkCloudService.GetLeaderboardPageSlice(_allLeaderboardEntries, _currentPage);
+			_hasMorePages = _leaderboard.Count < _allLeaderboardEntries.Count;
 			LeaderboardList.ItemsSource = _leaderboard;
 			LeaderboardList.Visibility = ((_leaderboard.Count <= 0) ? Visibility.Collapsed : Visibility.Visible);
 			LeaderboardEmpty.Visibility = ((_leaderboard.Count != 0) ? Visibility.Collapsed : Visibility.Visible);
-			LoadMoreText.Visibility = Visibility.Collapsed;
+			UpdateLoadMoreUI(_allLeaderboardEntries.Count);
 		}
 		catch (Exception ex)
 		{
@@ -921,30 +889,20 @@ public sealed partial class BenchmarkCloudPage : Page
 
 		try
 		{
+			await Task.Yield();
 			int nextPage = _currentPage + 1;
-			var pageData = await BenchmarkCloudService.GetLeaderboardPageAsync(_currentSortBy, nextPage, CancellationToken.None);
-			if (pageData != null)
+			var newEntries = BenchmarkCloudService.GetLeaderboardPageSlice(_allLeaderboardEntries, nextPage);
+			if (newEntries.Count == 0)
 			{
-				_currentPage = nextPage;
-				_hasMorePages = BenchmarkCloudService.HasMorePages(_currentSortBy, nextPage);
-
-				string filterText = CpuFilterBox.Text;
-				IEnumerable<BenchmarkLeaderboardRankEntry> source = pageData.Entries;
-				if (!string.IsNullOrWhiteSpace(filterText))
-					source = source.Where(e => e.CpuName.Contains(filterText, StringComparison.OrdinalIgnoreCase));
-
-				var newEntries = source.Select(e => new BenchmarkLeaderboardEntry
-				{
-					Rank = e.Rank,
-					Report = e.ToReportEntry()
-				}).ToList();
-
-				int baseRank = _leaderboard.Count;
-				_leaderboard.AddRange(newEntries);
-				LeaderboardList.ItemsSource = null;
-				LeaderboardList.ItemsSource = _leaderboard;
-				UpdateLoadMoreUI(pageData.TotalEntries);
+				_hasMorePages = false;
+				return;
 			}
+			_currentPage = nextPage;
+			_hasMorePages = _leaderboard.Count + newEntries.Count < _allLeaderboardEntries.Count;
+			_leaderboard.AddRange(newEntries);
+			LeaderboardList.ItemsSource = null;
+			LeaderboardList.ItemsSource = _leaderboard;
+			UpdateLoadMoreUI(_allLeaderboardEntries.Count);
 		}
 		catch
 		{
@@ -983,6 +941,28 @@ public sealed partial class BenchmarkCloudPage : Page
 		{
 			await LoadMoreLeaderboardAsync();
 		}
+	}
+
+	private void LeaderboardList_Loaded(object sender, RoutedEventArgs e)
+	{
+		if (_leaderboardScrollViewer is not null)
+			_leaderboardScrollViewer.ViewChanged -= LeaderboardScrollViewer_ViewChanged;
+
+		_leaderboardScrollViewer = FindDescendantScrollViewer(LeaderboardList);
+		if (_leaderboardScrollViewer is not null)
+			_leaderboardScrollViewer.ViewChanged += LeaderboardScrollViewer_ViewChanged;
+	}
+
+	private static ScrollViewer? FindDescendantScrollViewer(DependencyObject root)
+	{
+		for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+		{
+			var child = VisualTreeHelper.GetChild(root, i);
+			if (child is ScrollViewer scrollViewer) return scrollViewer;
+			var descendant = FindDescendantScrollViewer(child);
+			if (descendant is not null) return descendant;
+		}
+		return null;
 	}
 
 	private void LeaderboardList_SelectionChanged(object sender, SelectionChangedEventArgs e)
