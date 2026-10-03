@@ -912,12 +912,6 @@
   <data name="Settings_Compact_Title.Text" xml:space="preserve">
     <value>简洁列表模式</value>
   </data>
-  <data name="Settings_ComponentTest_Desc.Text" xml:space="preserve">
-    <value>预览 HealthGauge 仪表盘与 SparklineGraph 图表组件</value>
-  </data>
-  <data name="Settings_ComponentTest_Title.Text" xml:space="preserve">
-    <value>组件测试</value>
-  </data>
   <data name="Settings_ConfigManager_Button.Text" xml:space="preserve">
     <value>管理</value>
   </data>

@@ -1606,26 +1606,6 @@
 
                     <Border
                         Style="{StaticResource NavCardBorderStyle}"
-                        Tapped="NavTestPage_Tapped">
-                        <Grid ColumnSpacing="16">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <Border Style="{StaticResource NavCardIconBorderStyle}">
-                                <FontIcon FontSize="20" Glyph="&#xE9F9;" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                            </Border>
-                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                                <TextBlock FontWeight="Bold" Text="组件测试" l:Uids.Uid="Settings_ComponentTest_Title" />
-                                <TextBlock Opacity="1.0" FontSize="13" Text="预览 HealthGauge 仪表盘与 SparklineGraph 图表组件" l:Uids.Uid="Settings_ComponentTest_Desc" />
-                            </StackPanel>
-                            <FontIcon Grid.Column="2" FontSize="14" Glyph="&#xE76C;" Opacity="1.0" VerticalAlignment="Center" />
-                        </Grid>
-                    </Border>
-
-                    <Border
-                        Style="{StaticResource NavCardBorderStyle}"
                         Tapped="NavWhatsNew_Tapped">
                         <Grid ColumnSpacing="16">
                             <Grid.ColumnDefinitions>
