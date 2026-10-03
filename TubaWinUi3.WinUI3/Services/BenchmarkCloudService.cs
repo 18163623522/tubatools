@@ -60,7 +60,8 @@ public static class BenchmarkCloudService
 	private static readonly object CacheLock = new();
 	private static List<BenchmarkReportEntry>? _cache;
 	private static DateTimeOffset _cacheTime;
-	private static readonly TimeSpan CacheDuration;
+	internal const int LeaderboardPageSize = 50;
+	internal static readonly TimeSpan CacheDuration = TimeSpan.FromDays(6);
 	private static BenchmarkLeaderboardData? _leaderboardCache;
 	private static readonly ConcurrentDictionary<string, BenchmarkReportEntry> _reportDetailCache = new(StringComparer.OrdinalIgnoreCase);
 	private static DateTimeOffset _leaderboardCacheTime;
@@ -79,8 +80,25 @@ public static class BenchmarkCloudService
 		{
 			Timeout = TimeSpan.FromSeconds(60)
 		};
-		CacheDuration = TimeSpan.FromMinutes(60);
 		_apiClient.DefaultRequestHeaders.Add("User-Agent", "TubaWinUi3-Benchmark");
+	}
+
+	internal static bool IsCacheFresh(DateTimeOffset cachedAt, DateTimeOffset now)
+	{
+		var age = now - cachedAt;
+		return age >= TimeSpan.Zero && age < CacheDuration;
+	}
+
+	internal static List<T> GetLeaderboardPageSlice<T>(IReadOnlyList<T> entries, int page)
+	{
+		long start = (long)page * LeaderboardPageSize;
+		if (page < 0 || start >= entries.Count) return [];
+
+		int count = Math.Min(LeaderboardPageSize, entries.Count - (int)start);
+		var result = new List<T>(count);
+		for (int i = 0; i < count; i++)
+			result.Add(entries[(int)start + i]);
+		return result;
 	}
 
 	public static void InvalidateCache()
@@ -560,7 +578,7 @@ public static class BenchmarkCloudService
 	{
 		lock (CacheLock)
 		{
-			if (_cache != null && DateTimeOffset.UtcNow - _cacheTime < CacheDuration)
+			if (_cache != null && IsCacheFresh(_cacheTime, DateTimeOffset.UtcNow))
 			{
 				return _cache;
 			}
@@ -627,7 +645,7 @@ public static class BenchmarkCloudService
 	{
 		lock (CacheLock)
 		{
-			if (_leaderboardCache != null && DateTimeOffset.UtcNow - _leaderboardCacheTime < CacheDuration)
+			if (_leaderboardCache != null && IsCacheFresh(_leaderboardCacheTime, DateTimeOffset.UtcNow))
 			{
 				return _leaderboardCache;
 			}
@@ -960,6 +978,8 @@ public static class BenchmarkCloudService
 		try
 		{
 			if (!File.Exists(LocalCachePath)) return [];
+			var cachedAt = new DateTimeOffset(File.GetLastWriteTimeUtc(LocalCachePath), TimeSpan.Zero);
+			if (!IsCacheFresh(cachedAt, DateTimeOffset.UtcNow)) return [];
 			string json = File.ReadAllText(LocalCachePath);
 			return JsonSerializer.Deserialize<List<BenchmarkReportEntry>>(json, new JsonSerializerOptions
 			{
