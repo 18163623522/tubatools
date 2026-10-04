@@ -32,6 +32,12 @@ public static class Win32Dialogs
     private const int OFN_ALLOWMULTISELECT = 0x200;
     private const int OFN_EXPLORER = 0x80000;
 
+    /// <summary>
+    /// nFilterIndex 的合法取值从 1 开始（第 1 组过滤器）。传 0 时对话框的「文件类型」
+    /// 下拉没有选中项，文件列表会是**空的**——表现就是「一个文件都选不了」。
+    /// </summary>
+    private const int FirstFilterIndex = 1;
+
     private static IntPtr Hwnd() => WinRT.Interop.WindowNative.GetWindowHandle(TubaWinUi3.App.MainWindow!);
 
     /// <summary>打开文件选择（filter 格式: "名称\0*.ext;*.ext2\0所有文件\0*.*\0\0"）。</summary>
@@ -42,6 +48,9 @@ public static class Win32Dialogs
             lStructSize = Marshal.SizeOf<OPENFILENAME>(),
             hwndOwner = Hwnd(),
             lpstrFilter = filter,
+            // nFilterIndex 必须 >= 1：传 0 时「文件类型」下拉没有选中项，文件列表会是空的
+            // （什么都点不了，看起来像「无法选择文件」）。
+            nFilterIndex = FirstFilterIndex,
             lpstrFile = new string(new char[1024]),
             nMaxFile = 1024,
             lpstrTitle = title,
@@ -58,6 +67,7 @@ public static class Win32Dialogs
             lStructSize = Marshal.SizeOf<OPENFILENAME>(),
             hwndOwner = Hwnd(),
             lpstrFilter = filter,
+            nFilterIndex = FirstFilterIndex,
             lpstrFile = new string(new char[32768]),
             nMaxFile = 32768,
             lpstrTitle = title,
@@ -80,6 +90,7 @@ public static class Win32Dialogs
             lStructSize = Marshal.SizeOf<OPENFILENAME>(),
             hwndOwner = Hwnd(),
             lpstrFilter = filter,
+            nFilterIndex = FirstFilterIndex,
             lpstrFile = (initialName ?? "").PadRight(1024, '\0'),
             nMaxFile = 1024,
             lpstrTitle = "选择输出位置",

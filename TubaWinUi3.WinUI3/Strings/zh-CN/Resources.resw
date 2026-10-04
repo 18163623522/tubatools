@@ -2226,6 +2226,12 @@
   <data name="Builtin_energy-star_Name" xml:space="preserve">
     <value>后台节流省电神器</value>
   </data>
+  <data name="Builtin_file-locksmith_Desc" xml:space="preserve">
+    <value>查看哪个进程正在占用指定的文件或目录，展开可看具体持有的路径，并支持结束占用进程。</value>
+  </data>
+  <data name="Builtin_file-locksmith_Name" xml:space="preserve">
+    <value>文件占用查看</value>
+  </data>
   <data name="Builtin_format-converter_Desc" xml:space="preserve">
     <value>图片/音视频/Word/Excel/PPT/PDF/文本互转，OCR 识别、PDF 合并拆分、任意文件打包 ZIP，批量队列、拖入即用</value>
   </data>
@@ -2852,6 +2858,144 @@
   </data>
   <data name="PortViewer_KillFailedMsg" xml:space="preserve">
     <value>无法结束进程 {0} (PID {1})：{2}</value>
+  </data>
+  <data name="FileLock_Cancel.Text" xml:space="preserve">
+    <value>取消</value>
+  </data>
+  <data name="FileLock_Cancelled" xml:space="preserve">
+    <value>扫描已取消</value>
+  </data>
+  <data name="FileLock_ColAction.Text" xml:space="preserve">
+    <value>操作</value>
+  </data>
+  <data name="FileLock_ColLocked" xml:space="preserve">
+    <value>持有路径（{0}）</value>
+  </data>
+  <data name="FileLock_ColPath.Text" xml:space="preserve">
+    <value>进程 exe</value>
+  </data>
+  <data name="FileLock_ColPid.Text" xml:space="preserve">
+    <value>PID</value>
+  </data>
+  <data name="FileLock_ColProcess.Text" xml:space="preserve">
+    <value>进程</value>
+  </data>
+  <data name="FileLock_ErrorFailed" xml:space="preserve">
+    <value>扫描失败：{0}</value>
+  </data>
+  <data name="FileLock_ErrorNoPath" xml:space="preserve">
+    <value>请先输入或选择要检查的文件 / 目录路径</value>
+  </data>
+  <data name="FileLock_ErrorNotFound" xml:space="preserve">
+    <value>找不到该文件或目录，请检查路径是否正确。</value>
+  </data>
+  <data name="FileLock_ErrorResolve" xml:space="preserve">
+    <value>无法解析该路径（{0}）</value>
+  </data>
+  <data name="FileLock_DetailCreateFileFailed" xml:space="preserve">
+    <value>无法打开该路径（错误码 {0}）</value>
+  </data>
+  <data name="FileLock_DetailNotDiskFile" xml:space="preserve">
+    <value>目标不是磁盘上的文件或目录</value>
+  </data>
+  <data name="FileLock_DetailDeviceNameUnavailable" xml:space="preserve">
+    <value>无法解析目标的设备名</value>
+  </data>
+  <data name="FileLock_DetailTypeIndexUnavailable" xml:space="preserve">
+    <value>无法确定文件对象的类型索引</value>
+  </data>
+  <data name="FileLock_DetailHandleTableTooLarge" xml:space="preserve">
+    <value>系统句柄表过大（需要 {0} 字节），已放弃扫描</value>
+  </data>
+  <data name="FileLock_DetailQuerySystemFailed" xml:space="preserve">
+    <value>查询系统句柄表失败（状态码 0x{0:X8}）</value>
+  </data>
+  <data name="FileLock_DetailUnexpected" xml:space="preserve">
+    <value>发生未预期的错误</value>
+  </data>
+  <data name="FileLock_Failed" xml:space="preserve">
+    <value>操作失败</value>
+  </data>
+  <data name="FileLock_ExeUnavailable" xml:space="preserve">
+    <value>—（需管理员权限）</value>
+  </data>
+  <data name="FileLock_ExeUnavailableTip" xml:space="preserve">
+    <value>读不到该进程的 exe 路径。以管理员身份运行本工具通常能读到（受保护的系统进程除外）。</value>
+  </data>
+  <data name="FileLock_Kill" xml:space="preserve">
+    <value>结束进程</value>
+  </data>
+  <data name="FileLock_KillConfirmBody" xml:space="preserve">
+    <value>确定要结束 {0} (PID {1}) 吗？未保存的数据会丢失。</value>
+  </data>
+  <data name="FileLock_KillConfirmTitle" xml:space="preserve">
+    <value>结束进程</value>
+  </data>
+  <data name="FileLock_KillFailed" xml:space="preserve">
+    <value>结束进程失败</value>
+  </data>
+  <data name="FileLock_KillSelf" xml:space="preserve">
+    <value>不能结束图吧工具箱自身进程。</value>
+  </data>
+  <data name="FileLock_KillStale" xml:space="preserve">
+    <value>该进程已退出或 PID 已被复用，为避免误杀，请重新扫描后再试。</value>
+  </data>
+  <data name="FileLock_KillFailedMsg" xml:space="preserve">
+    <value>无法结束进程 {0} (PID {1})：{2}</value>
+  </data>
+  <data name="FileLock_KillTip" xml:space="preserve">
+    <value>尝试结束该占用进程（需二次确认）</value>
+  </data>
+  <data name="FileLock_OpenFailed" xml:space="preserve">
+    <value>无法打开所在位置：{0}</value>
+  </data>
+  <data name="FileLock_OpenLocation" xml:space="preserve">
+    <value>打开位置</value>
+  </data>
+  <data name="FileLock_OpenLocationTip" xml:space="preserve">
+    <value>在资源管理器中打开该文件</value>
+  </data>
+  <data name="FileLock_NoResult" xml:space="preserve">
+    <value>没有进程占用该路径。</value>
+  </data>
+  <data name="FileLock_PageHeader.Subtitle" xml:space="preserve">
+    <value>列出正在占用指定文件或目录的进程，展开可看具体持有的路径</value>
+  </data>
+  <data name="FileLock_PageHeader.Title" xml:space="preserve">
+    <value>文件占用查看</value>
+  </data>
+  <data name="FileLock_PathPlaceholder.PlaceholderText" xml:space="preserve">
+    <value>输入或选择要检查的文件 / 目录路径</value>
+  </data>
+  <data name="FileLock_PickFile.Text" xml:space="preserve">
+    <value>选择文件</value>
+  </data>
+  <data name="FileLock_PickFolder.Text" xml:space="preserve">
+    <value>选择目录</value>
+  </data>
+  <data name="FileLock_ProcessImage" xml:space="preserve">
+    <value>进程 exe</value>
+  </data>
+  <data name="FileLock_Progress" xml:space="preserve">
+    <value>已检查 {0} / {1} 个句柄</value>
+  </data>
+  <data name="FileLock_Scan.Text" xml:space="preserve">
+    <value>扫描</value>
+  </data>
+  <data name="FileLock_Scanning.Text" xml:space="preserve">
+    <value>正在扫描...</value>
+  </data>
+  <data name="FileLock_Summary" xml:space="preserve">
+    <value>共 {0} 个进程占用，涉及 {1} 个路径。</value>
+  </data>
+  <data name="FileLock_SummaryGuarded" xml:space="preserve">
+    <value>有 {0} 个句柄因查询卡死被跳过，可能遗漏。</value>
+  </data>
+  <data name="FileLock_SummarySkipped" xml:space="preserve">
+    <value>有 {0} 个受保护进程无法查询，可能遗漏。</value>
+  </data>
+  <data name="FileLock_SummaryTruncated" xml:space="preserve">
+    <value>扫描被中断，结果可能不完整。</value>
   </data>
   <data name="DiskHealth_PageHeader.Title" xml:space="preserve">
     <value>磁盘健康</value>
