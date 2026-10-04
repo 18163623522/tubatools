@@ -1757,6 +1757,13 @@
       "categories": [
         "其他工具"
       ]
+    },
+    {
+      "match": "文件占用查看",
+      "builtin": "file-locksmith",
+      "categories": [
+        "其他工具"
+      ]
     }
   ]
 }

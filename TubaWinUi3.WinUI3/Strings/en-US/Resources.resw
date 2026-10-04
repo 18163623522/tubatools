@@ -2210,6 +2210,12 @@ Permissions
   <data name="Builtin_energy-star_Name" xml:space="preserve">
     <value>Background Power Saver</value>
   </data>
+  <data name="Builtin_file-locksmith_Desc" xml:space="preserve">
+    <value>See which process is holding a given file or folder, expand a process to view the exact paths it holds, and end the holding process if needed.</value>
+  </data>
+  <data name="Builtin_file-locksmith_Name" xml:space="preserve">
+    <value>File Locksmith</value>
+  </data>
   <data name="Builtin_format-converter_Desc" xml:space="preserve">
     <value>Convert images/audio/video/Word/Excel/PPT/PDF/text, OCR, PDF merge &amp; split, ZIP packaging — batch queue, drag and drop</value>
   </data>
@@ -2836,6 +2842,120 @@ Permissions
   </data>
   <data name="PortViewer_KillFailedMsg" xml:space="preserve">
     <value>Could not end process {0} (PID {1}): {2}</value>
+  </data>
+  <data name="FileLock_Cancel.Text" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="FileLock_Cancelled" xml:space="preserve">
+    <value>Scan cancelled</value>
+  </data>
+  <data name="FileLock_ColAction.Text" xml:space="preserve">
+    <value>Action</value>
+  </data>
+  <data name="FileLock_ColLocked" xml:space="preserve">
+    <value>Held paths ({0})</value>
+  </data>
+  <data name="FileLock_ColPath.Text" xml:space="preserve">
+    <value>Process image</value>
+  </data>
+  <data name="FileLock_ColPid.Text" xml:space="preserve">
+    <value>PID</value>
+  </data>
+  <data name="FileLock_ColProcess.Text" xml:space="preserve">
+    <value>Process</value>
+  </data>
+  <data name="FileLock_ErrorFailed" xml:space="preserve">
+    <value>Scan failed: {0}</value>
+  </data>
+  <data name="FileLock_ErrorNoPath" xml:space="preserve">
+    <value>Enter or pick a file / folder path first.</value>
+  </data>
+  <data name="FileLock_ErrorNotFound" xml:space="preserve">
+    <value>No such file or folder — check the path.</value>
+  </data>
+  <data name="FileLock_ErrorResolve" xml:space="preserve">
+    <value>Could not resolve this path ({0})</value>
+  </data>
+  <data name="FileLock_Failed" xml:space="preserve">
+    <value>Action failed</value>
+  </data>
+  <data name="FileLock_ExeUnavailable" xml:space="preserve">
+    <value>— (needs admin)</value>
+  </data>
+  <data name="FileLock_ExeUnavailableTip" xml:space="preserve">
+    <value>Could not read this process's executable path. Running this tool as administrator usually works (protected system processes excepted).</value>
+  </data>
+  <data name="FileLock_Kill" xml:space="preserve">
+    <value>End process</value>
+  </data>
+  <data name="FileLock_KillConfirmBody" xml:space="preserve">
+    <value>End {0} (PID {1})? Any unsaved data will be lost.</value>
+  </data>
+  <data name="FileLock_KillConfirmTitle" xml:space="preserve">
+    <value>End process</value>
+  </data>
+  <data name="FileLock_KillFailed" xml:space="preserve">
+    <value>Failed to end process</value>
+  </data>
+  <data name="FileLock_KillSelf" xml:space="preserve">
+    <value>Cannot end the TubaToolbox process itself.</value>
+  </data>
+  <data name="FileLock_KillFailedMsg" xml:space="preserve">
+    <value>Could not end {0} (PID {1}): {2}</value>
+  </data>
+  <data name="FileLock_KillTip" xml:space="preserve">
+    <value>Try to end the holding process (asks for confirmation)</value>
+  </data>
+  <data name="FileLock_OpenFailed" xml:space="preserve">
+    <value>Could not open the location: {0}</value>
+  </data>
+  <data name="FileLock_OpenLocation" xml:space="preserve">
+    <value>Open location</value>
+  </data>
+  <data name="FileLock_OpenLocationTip" xml:space="preserve">
+    <value>Show this file in File Explorer</value>
+  </data>
+  <data name="FileLock_NoResult" xml:space="preserve">
+    <value>No process is holding this path.</value>
+  </data>
+  <data name="FileLock_PageHeader.Subtitle" xml:space="preserve">
+    <value>List the processes holding a file or folder, expand one to see the exact paths it holds</value>
+  </data>
+  <data name="FileLock_PageHeader.Title" xml:space="preserve">
+    <value>File Locksmith</value>
+  </data>
+  <data name="FileLock_PathPlaceholder.PlaceholderText" xml:space="preserve">
+    <value>Enter or pick a file / folder path</value>
+  </data>
+  <data name="FileLock_PickFile.Text" xml:space="preserve">
+    <value>Pick file</value>
+  </data>
+  <data name="FileLock_PickFolder.Text" xml:space="preserve">
+    <value>Pick folder</value>
+  </data>
+  <data name="FileLock_ProcessImage" xml:space="preserve">
+    <value>Process image</value>
+  </data>
+  <data name="FileLock_Progress" xml:space="preserve">
+    <value>Checked {0} of {1} handles</value>
+  </data>
+  <data name="FileLock_Scan.Text" xml:space="preserve">
+    <value>Scan</value>
+  </data>
+  <data name="FileLock_Scanning.Text" xml:space="preserve">
+    <value>Scanning...</value>
+  </data>
+  <data name="FileLock_Summary" xml:space="preserve">
+    <value>{0} process(es) hold it, covering {1} path(s).</value>
+  </data>
+  <data name="FileLock_SummaryGuarded" xml:space="preserve">
+    <value>{0} handle(s) were skipped because querying them hung and may be missing.</value>
+  </data>
+  <data name="FileLock_SummarySkipped" xml:space="preserve">
+    <value>{0} protected process(es) could not be queried and may be missing.</value>
+  </data>
+  <data name="FileLock_SummaryTruncated" xml:space="preserve">
+    <value>The scan was interrupted, so the result may be incomplete.</value>
   </data>
   <data name="DiskHealth_PageHeader.Title" xml:space="preserve">
     <value>Disk Health</value>
