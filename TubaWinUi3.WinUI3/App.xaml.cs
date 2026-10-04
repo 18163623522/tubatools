@@ -315,6 +315,18 @@ public partial class App : Application
         // 游戏后台自动覆盖层：常驻轮询后端信号文件（检测到全屏游戏自动显示悬浮窗）
         Services.GameOverlayAutoService.Instance.Start();
 
+        // 环境变量页要靠窗口子类化才能收到外部程序的 WM_SETTINGCHANGE；
+        // 装不上只是少个提示，绝不能因此让启动失败。
+        try
+        {
+            Services.EnvVars.EnvironmentChangeWatcher.EnsureInstalled(
+                WinRT.Interop.WindowNative.GetWindowHandle(_window));
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[EnvVars] 环境变量变更监听安装失败: {ex.Message}");
+        }
+
         // 后端检测到游戏自动拉起主程序时（--game-overlay-auto）：
         // 用户在玩游戏，主界面不应抢焦点弹到游戏前面 —— 最小化到任务栏即可。
         var gameOverlayAuto = cmdLine

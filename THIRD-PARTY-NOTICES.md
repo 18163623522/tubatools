@@ -38,8 +38,13 @@
 
 以下功能为参照上游开源项目**重新实现**的托管代码（未搬运其源代码文件），在此保留署名：
 
+<<<<<<< HEAD
 - **文件占用查看**（内置工具 `file-locksmith`，`TubaWinUi3.WinUI3/Services/FileLock/`）
   参照 Microsoft **PowerToys** 的 File Locksmith 模块（`src/modules/FileLocksmith/`）实现，
+=======
+- **环境变量**（内置工具 `environment-variables`，`TubaWinUi3.WinUI3/Services/EnvVars/`）
+  参照 Microsoft **PowerToys** 的 Environment Variables 模块（`src/modules/EnvironmentVariables/`）实现，
+>>>>>>> pr223
   MIT License，Copyright (c) Microsoft Corporation。
   上游项目：https://github.com/microsoft/PowerToys
 
@@ -94,8 +99,13 @@ This file clarifies rights boundaries for third-party content in this repository
 The following features are managed-code **re-implementations** modelled on upstream open-source projects
 (no source files were copied from them). Attribution is kept here:
 
+<<<<<<< HEAD
 - **File Locksmith** (built-in tool `file-locksmith`, `TubaWinUi3.WinUI3/Services/FileLock/`)
   Modelled on the File Locksmith module of Microsoft **PowerToys** (`src/modules/FileLocksmith/`),
+=======
+- **Environment Variables** (built-in tool `environment-variables`, `TubaWinUi3.WinUI3/Services/EnvVars/`)
+  Modelled on the Environment Variables module of Microsoft **PowerToys** (`src/modules/EnvironmentVariables/`),
+>>>>>>> pr223
   MIT License, Copyright (c) Microsoft Corporation.
   Upstream: https://github.com/microsoft/PowerToys
 
