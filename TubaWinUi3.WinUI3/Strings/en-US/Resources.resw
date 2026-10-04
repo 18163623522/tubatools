@@ -2216,6 +2216,12 @@ Permissions
   <data name="Builtin_file-locksmith_Name" xml:space="preserve">
     <value>File Locksmith</value>
   </data>
+  <data name="Builtin_environment-variables_Desc" xml:space="preserve">
+    <value>View and edit user/system environment variables; edit PATH entry by entry; auto-backup before saving and broadcast a refresh afterwards.</value>
+  </data>
+  <data name="Builtin_environment-variables_Name" xml:space="preserve">
+    <value>Environment Variables</value>
+  </data>
   <data name="Builtin_format-converter_Desc" xml:space="preserve">
     <value>Convert images/audio/video/Word/Excel/PPT/PDF/text, OCR, PDF merge &amp; split, ZIP packaging — batch queue, drag and drop</value>
   </data>
@@ -3669,5 +3675,239 @@ Permissions
   </data>
   <data name="HwDetail_UsbTruncated" xml:space="preserve">
     <value>{0} total (showing first {1})</value>
+  </data>
+  <data name="EnvVars_PageHeader.Subtitle" xml:space="preserve">
+    <value>View and edit user/system environment variables; edit PATH entry by entry; a refresh is broadcast after saving</value>
+  </data>
+  <data name="EnvVars_PageHeader.Title" xml:space="preserve">
+    <value>Environment Variables</value>
+  </data>
+  <data name="EnvVars_TabUser" xml:space="preserve">
+    <value>User variables</value>
+  </data>
+  <data name="EnvVars_TabUser.Header" xml:space="preserve">
+    <value>User variables</value>
+  </data>
+  <data name="EnvVars_TabSystem" xml:space="preserve">
+    <value>System variables</value>
+  </data>
+  <data name="EnvVars_TabSystem.Header" xml:space="preserve">
+    <value>System variables</value>
+  </data>
+  <data name="EnvVars_ColName.Text" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="EnvVars_FieldName.Text" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="EnvVars_New.Text" xml:space="preserve">
+    <value>New</value>
+  </data>
+  <data name="EnvVars_Delete" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="EnvVars_Delete.Text" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="EnvVars_Save.Text" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="EnvVars_Revert.Text" xml:space="preserve">
+    <value>Discard changes</value>
+  </data>
+  <data name="EnvVars_RestoreLastBackup.Text" xml:space="preserve">
+    <value>Restore last backup</value>
+  </data>
+  <data name="EnvVars_Reload.Text" xml:space="preserve">
+    <value>Reload</value>
+  </data>
+  <data name="EnvVars_Cancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="EnvVars_ValuePlaceholder.PlaceholderText" xml:space="preserve">
+    <value>Value (stored as-is; %VAR% is not expanded)</value>
+  </data>
+  <data name="EnvVars_EmptyHint.Text" xml:space="preserve">
+    <value>Select a variable on the left, or click New to add one.</value>
+  </data>
+  <data name="EnvVars_PathListTitle.Text" xml:space="preserve">
+    <value>Entry-by-entry editing (semicolon separated)</value>
+  </data>
+  <data name="EnvVars_PathDedupe.Text" xml:space="preserve">
+    <value>Remove duplicates</value>
+  </data>
+  <data name="EnvVars_PathMoveUp.ToolTip" xml:space="preserve">
+    <value>Move up</value>
+  </data>
+  <data name="EnvVars_PathMoveDown.ToolTip" xml:space="preserve">
+    <value>Move down</value>
+  </data>
+  <data name="EnvVars_PathInsert.ToolTip" xml:space="preserve">
+    <value>Insert below</value>
+  </data>
+  <data name="EnvVars_PathCopy.ToolTip" xml:space="preserve">
+    <value>Duplicate entry</value>
+  </data>
+  <data name="EnvVars_PathRemove.ToolTip" xml:space="preserve">
+    <value>Remove entry</value>
+  </data>
+  <data name="EnvVars_KindExpand" xml:space="preserve">
+    <value>Will be stored as REG_EXPAND_SZ: %VAR% in the value is expanded by programs that use it</value>
+  </data>
+  <data name="EnvVars_KindString" xml:space="preserve">
+    <value>Will be stored as REG_SZ: the value is kept as-is, % is not expanded</value>
+  </data>
+  <data name="EnvVars_DirtyHint" xml:space="preserve">
+    <value>Unsaved changes</value>
+  </data>
+  <data name="EnvVars_LoadFailed" xml:space="preserve">
+    <value>Failed to read</value>
+  </data>
+  <data name="EnvVars_Unnamed" xml:space="preserve">
+    <value>(unnamed)</value>
+  </data>
+  <data name="EnvVars_DeleteConfirmMsg" xml:space="preserve">
+    <value>Delete the variable "{0}"? It takes effect after saving; use Discard changes to undo until then.</value>
+  </data>
+  <data name="EnvVars_DirtyConfirmTitle" xml:space="preserve">
+    <value>Unsaved changes</value>
+  </data>
+  <data name="EnvVars_DirtyConfirmMsg" xml:space="preserve">
+    <value>Environment variables have unsaved changes. Discard them?</value>
+  </data>
+  <data name="EnvVars_Discard" xml:space="preserve">
+    <value>Discard</value>
+  </data>
+  <data name="EnvVars_KeepEditing" xml:space="preserve">
+    <value>Keep editing</value>
+  </data>
+  <data name="EnvVars_ValidationFailed" xml:space="preserve">
+    <value>Validation failed</value>
+  </data>
+  <data name="EnvVars_Fail_NameEmpty" xml:space="preserve">
+    <value>Variable "{0}": name cannot be empty</value>
+  </data>
+  <data name="EnvVars_Fail_NameWhitespace" xml:space="preserve">
+    <value>Variable "{0}": name cannot begin or end with whitespace</value>
+  </data>
+  <data name="EnvVars_Fail_NameEqualsSign" xml:space="preserve">
+    <value>Variable "{0}": name cannot contain an equals sign</value>
+  </data>
+  <data name="EnvVars_Fail_NameControlChar" xml:space="preserve">
+    <value>Variable "{0}": name cannot contain control characters</value>
+  </data>
+  <data name="EnvVars_Fail_NameTooLong" xml:space="preserve">
+    <value>Variable "{0}": name cannot exceed {1} characters</value>
+  </data>
+  <data name="EnvVars_Fail_ValueNullChar" xml:space="preserve">
+    <value>Variable "{0}": value cannot contain a null character</value>
+  </data>
+  <data name="EnvVars_Fail_TotalTooLong" xml:space="preserve">
+    <value>Variable "{0}": name and value together cannot exceed {1} characters</value>
+  </data>
+  <data name="EnvVars_Fail_ReadFailed" xml:space="preserve">
+    <value>Failed to read environment variables. Please try again.</value>
+  </data>
+  <data name="EnvVars_Fail_KeyUnavailable" xml:space="preserve">
+    <value>Cannot open registry key: {0}</value>
+  </data>
+  <data name="EnvVars_Fail_AccessDeniedSystem" xml:space="preserve">
+    <value>Access denied: modifying system environment variables requires administrator rights</value>
+  </data>
+  <data name="EnvVars_Fail_AccessDeniedUser" xml:space="preserve">
+    <value>Access denied: no permission to modify this registry key</value>
+  </data>
+  <data name="EnvVars_Fail_AccessDeniedSystem_Partial" xml:space="preserve">
+    <value>Access denied: modifying system environment variables requires administrator rights. The automatic restore did not succeed; some changes may still be present — use "Restore last backup" to recover.</value>
+  </data>
+  <data name="EnvVars_Fail_AccessDeniedUser_Partial" xml:space="preserve">
+    <value>Access denied: no permission to modify this registry key. The automatic restore did not succeed; some changes may still be present — use "Restore last backup" to recover.</value>
+  </data>
+  <data name="EnvVars_Fail_BackupFailed" xml:space="preserve">
+    <value>Creating the backup failed. This change was cancelled and no environment variable was modified.</value>
+  </data>
+  <data name="EnvVars_Fail_WriteFailed_RolledBack" xml:space="preserve">
+    <value>Writing failed, and the previous state was restored automatically.</value>
+  </data>
+  <data name="EnvVars_Fail_WriteFailed_Partial" xml:space="preserve">
+    <value>Writing failed and the automatic restore did not succeed. Some changes may still be present; use "Restore last backup" to recover.</value>
+  </data>
+  <data name="EnvVars_Fail_VerifyFailed_RolledBack" xml:space="preserve">
+    <value>The written value did not read back correctly; the previous state was restored automatically.</value>
+  </data>
+  <data name="EnvVars_Fail_VerifyFailed_Partial" xml:space="preserve">
+    <value>The written value did not read back correctly and the automatic restore did not succeed. Some changes may still be present; use "Restore last backup" to recover.</value>
+  </data>
+  <data name="EnvVars_Fail_DeleteFailed_RolledBack" xml:space="preserve">
+    <value>The deletion did not take effect; the previous state was restored automatically.</value>
+  </data>
+  <data name="EnvVars_Fail_DeleteFailed_Partial" xml:space="preserve">
+    <value>The deletion did not take effect and the automatic restore did not succeed. Some changes may still be present; use "Restore last backup" to recover.</value>
+  </data>
+  <data name="EnvVars_Fail_UnsupportedKind" xml:space="preserve">
+    <value>Variable "{0}" uses an unsupported registry type. To avoid converting it to REG_SZ, this tool will not modify it.</value>
+  </data>
+  <data name="EnvVars_Fail_RestoreNoBackup" xml:space="preserve">
+    <value>No backup is available.</value>
+  </data>
+  <data name="EnvVars_Fail_RestoreUnreadable" xml:space="preserve">
+    <value>The backup file is corrupted or unreadable. Please try again.</value>
+  </data>
+  <data name="EnvVars_Fail_RestoreEmpty" xml:space="preserve">
+    <value>The backup file contains no variables.</value>
+  </data>
+  <data name="EnvVars_UnsupportedKindTitle" xml:space="preserve">
+    <value>Unsupported registry type</value>
+  </data>
+  <data name="EnvVars_UnsupportedKindMsg" xml:space="preserve">
+    <value>"{0}" uses registry type {1}. This tool only supports REG_SZ and REG_EXPAND_SZ, so editing and deleting are disabled.</value>
+  </data>
+  <data name="EnvVars_DuplicateNames" xml:space="preserve">
+    <value>Duplicate variable names (case-insensitive): {0}</value>
+  </data>
+  <data name="EnvVars_NoChange" xml:space="preserve">
+    <value>Nothing to save</value>
+  </data>
+  <data name="EnvVars_ApplyFailed" xml:space="preserve">
+    <value>Save failed</value>
+  </data>
+  <data name="EnvVars_SavedTitle" xml:space="preserve">
+    <value>Saved</value>
+  </data>
+  <data name="EnvVars_SavedMsg" xml:space="preserve">
+    <value>Saved {0} change(s). Programs and terminals that are already running must be restarted to see the new values.</value>
+  </data>
+  <data name="EnvVars_RestoreConfirmTitle" xml:space="preserve">
+    <value>Restore last backup</value>
+  </data>
+  <data name="EnvVars_RestoreConfirmMsg" xml:space="preserve">
+    <value>This restores "{0}" to its state before the last save. Unsaved edits will be lost.</value>
+  </data>
+  <data name="EnvVars_RestoreConfirmPrimary" xml:space="preserve">
+    <value>Restore</value>
+  </data>
+  <data name="EnvVars_RestoreFailed" xml:space="preserve">
+    <value>Restore failed</value>
+  </data>
+  <data name="EnvVars_RestoreDone" xml:space="preserve">
+    <value>Restored</value>
+  </data>
+  <data name="EnvVars_RestoreDoneMsg" xml:space="preserve">
+    <value>Restored {0} variable(s).</value>
+  </data>
+  <data name="EnvVars_ExternalChangeTitle" xml:space="preserve">
+    <value>Environment change detected</value>
+  </data>
+  <data name="EnvVars_ExternalChangeMsg" xml:space="preserve">
+    <value>Another program changed the environment variables. Click Reload to see the latest content.</value>
+  </data>
+  <data name="EnvVars_ExternalChangeDirty" xml:space="preserve">
+    <value>Another program changed the environment variables. You have unsaved edits; clicking Reload will discard them.</value>
+  </data>
+  <data name="EnvVars_AdminRequiredTitle" xml:space="preserve">
+    <value>Administrator required</value>
+  </data>
+  <data name="EnvVars_AdminRequired" xml:space="preserve">
+    <value>Not running as administrator — system variables are read-only.</value>
   </data>
 </root>
