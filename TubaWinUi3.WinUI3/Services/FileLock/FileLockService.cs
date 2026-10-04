@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -130,8 +131,14 @@ public static class FileLockService
     /// <summary>其他分片都已收尾时，给最后一片的宽限期（超过即判定卡住）。</summary>
     private const int IdleAbandonMs = 2000;
 
-    /// <summary>整轮扫描最多容忍几个卡死的句柄——卡住的会被跳过并从下一个位置续跑。</summary>
-    private const int MaxStallRecoveries = 4;
+    /// <summary>
+    /// 整轮扫描最多容忍几个卡死的句柄——卡住的会被跳过并从下一个位置续跑。
+    /// 不再让它当「能否扫完」的瓶颈：实测本机会长期存在卡死句柄（驱动持有的读句柄），
+    /// 而且每跳过一个就会泄漏一个副本句柄、下一次扫描里它又变成新的卡死项（家族会涨）。
+    /// 预算给足，让扫描尽量扫完；真正兜底的是 <see cref="HardTimeoutMs"/>（整轮 60 秒硬上限），
+    /// 还有「卡在片尾、没有剩余区间」与「真的放弃」的区分（见 RunWithWatchdog 的收尾判定）。
+    /// </summary>
+    private const int MaxStallRecoveries = 16;
 
     /// <summary>整体硬超时。</summary>
     private const int HardTimeoutMs = 60_000;
@@ -174,12 +181,15 @@ public static class FileLockService
     /// <summary>
     /// 扫描目标文件/目录的占用者。
     ///
-    /// 过滤层次（越靠前越便宜，目的是把有阻塞风险的 NtQueryObject 留到最后）：
+    /// 过滤层次（越靠前越便宜，把可能阻塞的调用留到最后）：
     /// 1) ObjectTypeIndex == File；2) DuplicateHandle + GetFileType == DISK（这一层把管道、
-    /// 设备、事件这类会在 NtQueryObject 上永久阻塞的对象全部挡掉）；3) 与目标同卷
-    /// （取不到卷序列号的一律跳过）；4) NtQueryObject 取名字再比路径。
-    /// 第 3 层是 v1 的取舍：它挡掉了几乎所有会卡死的设备/远端句柄，代价是
-    /// 「拿不到卷序列号但确实占了目标文件」的句柄会被漏报（因此异常时宁可退化为不做该层筛）。
+    /// 设备、事件这类对象挡掉）；3) 已知卡死对象直接跳过（KnownHungObjects）；
+    /// 4) 取名：**final path 是主路径**（GetFinalPathNameByHandleW 向文件系统要名字），
+    /// 取不到的句柄才退回 NtQueryObject；5) 同卷前缀字符串预筛 + 路径匹配。
+    ///
+    /// 同卷预筛已从「查卷序列号」改成「比 final path 的卷前缀」：GetFileInformationByHandleEx(FileIdInfo)
+    /// 在个别句柄上会卡死（实测），而卷前缀比较是纯字符串操作、不碰文件系统。
+    /// 代价是不同卷前缀的句柄会被提前跳过——但它们本来就不可能命中目标，没有漏报。
     ///
     /// 刻意**不**按 GrantedAccess 跳过：0x0012019F 不是管道专属值，它就是
     /// FILE_GENERIC_READ|FILE_GENERIC_WRITE（读写打开），按它跳过会把 Excel / Word /
@@ -188,10 +198,9 @@ public static class FileLockService
     /// 已知限制（v1 刻意不做）：
     /// - 不检测内存映射镜像（Section 对象）：运行中的 exe / 已加载的 DLL 占不出；
     /// - 不开启 SeDebugPrivilege：打不开的进程跳过并计入 SkippedProcesses；
-    /// - subst / 符号链接 / 挂载卷等路径别名对不上（按内核设备名精确比较）；
-    /// - 极少数句柄仍可能让 NtQueryObject 阻塞：句柄表按片并行枚举，卡住的那一个句柄会被跳过
-    ///   并从其后续跑（计入 GuardedHandles）；连片尾都无法续跑时才 Truncated=true。
-    ///   不调 TerminateThread，代价是可能泄漏一个后台线程。
+    /// - 个别句柄上的文件系统查询会卡死（实测某驱动句柄）：卡住的那一个句柄会被跳过并从其后续跑
+    ///   （计入 GuardedHandles），卡死的对象会被登记、后续扫描直接跳过；不调 TerminateThread，
+    ///   代价是首次发现时可能泄漏一个后台线程与一个副本句柄。
     /// </summary>
     public static FileLockScanResult Scan(string path, CancellationToken cancellationToken, IProgress<string>? progress = null)
     {
@@ -221,9 +230,9 @@ public static class FileLockService
             };
         }
 
+        string targetFinalPath;
         string targetKernelName;
         ushort fileTypeIndex;
-        ulong targetVolumeSerial;
         try
         {
             if (FileLockNative.GetFileType(ownHandle) != FileLockNative.FileTypeDisk)
@@ -236,14 +245,25 @@ public static class FileLockService
                 };
             }
 
+            // 主匹配名 = final path（\\?\C:\...）：走文件系统解析，不像 NtQueryObject 那样会阻塞。
+            // 极少数句柄上文件系统解析会失败，此时按用户给的路径归一化兜底（通常等价）。
+            targetFinalPath = QueryFinalPath(ownHandle) ?? "";
+            if (targetFinalPath.Length == 0)
+            {
+                try { targetFinalPath = @"\\?\" + Path.GetFullPath(raw); }
+                catch { targetFinalPath = ""; }
+            }
+
+            // 兜底匹配名 = 内核设备名（\Device\HarddiskVolumeN\...）：仅当某个候选句柄取不到
+            // final path 时才会用到。两个名字都拿不到才算解析失败。
             targetKernelName = QueryObjectName(ownHandle) ?? "";
-            if (targetKernelName.Length == 0)
+            if (targetFinalPath.Length == 0 && targetKernelName.Length == 0)
             {
                 return new FileLockScanResult
                 {
                     Error = FileLockScanError.ResolveFailed,
                     Failure = FileLockScanFailure.DeviceNameUnavailable,
-                    ErrorDetail = "无法解析目标的内核设备名"
+                    ErrorDetail = "无法解析目标路径"
                 };
             }
 
@@ -276,8 +296,8 @@ public static class FileLockService
                 };
             }
 
-            // 同卷预筛用的卷序列号；取不到就退化为「不做这一层筛」（不能退化成「全跳过」）。
-            targetVolumeSerial = TryGetVolumeSerial(ownHandle, out ulong serial) ? serial : 0;
+            // 同卷预筛不再查卷序列号：GetFileInformationByHandleEx(FileIdInfo) 在个别句柄上
+            // 会卡死（实测本机某驱动句柄），改用 final path 的卷前缀做纯字符串比较。
         }
         finally
         {
@@ -285,8 +305,12 @@ public static class FileLockService
             FileLockNative.CloseHandle(ownHandle);
         }
 
+        // 匹配与显示都用规范化后的 final path；同卷预筛用它前两段的字符串前缀（C: 或 \\server\share）。
+        targetFinalPath = NormalizeFinalPath(targetFinalPath);
+        string targetVolumePrefix = VolumePrefixOf(targetFinalPath);
+
         var deviceMap = BuildDeviceMap();
-        var state = new ScanState(targetKernelName.TrimEnd('\\'), isDirectory, fileTypeIndex, targetVolumeSerial, deviceMap);
+        var state = new ScanState(targetFinalPath, targetKernelName, targetVolumePrefix, isDirectory, fileTypeIndex, deviceMap);
 
         try
         {
@@ -405,53 +429,96 @@ public static class FileLockService
                 }
             }
 
-            // 到这儿说明卡住的句柄已经在片尾且无法续跑，只能放弃这一片。
-            state.Truncated = true;
+            // 没法再续跑。是真截断还是「只剩卡在片尾的那几个句柄没结论」，统一在循环后用
+            // PendingRunners 与 ExhaustedRunners 的计数判定（见下）。
             break;
         }
 
-        if (state.PendingRunners > 0)
-            state.Truncated = true;
-
-        // 主线程自己的名额到期：它之后不会再拉起任何分片（看门狗循环已结束）。
-        // 分片仍在跑（取消 / 看门狗放弃）时快照由最后一个退出的分片释放；
-        // 都结束了则在这里当场释放——取消路径的泄漏就是这么收回的。
+        // 还在跑的分片若都已登记为「卡在片尾 / 已被续跑覆盖」（ExhaustedRunners），
+        // 说明整张句柄表没有别的缺口：缺的只是它们正处理的那几个句柄的结论，
+        // GuardedHandles 已如实计数，结果摘要会提示——不该把整次扫描标成「被截断」。
+        state.Truncated = state.PendingRunners > state.ExhaustedRunners;
         state.ReleaseSnapshotOwner();
     }
 
     /// <summary>
-    /// 取句柄所属卷的序列号（不解路径，因而不会像 NtQueryObject 那样阻塞）。
-    /// 设备句柄、远端句柄、权限不足都会失败——这正是我们要挡掉的那批。
+    /// 路径的卷前缀（盘符路径 C: ；UNC 路径 \\server\share）。用于「同卷」快速预筛：
+    /// 纯字符串操作，不碰文件系统——原来的卷序列号查询（GetFileInformationByHandleEx(FileIdInfo)）
+    /// 在个别句柄上会卡死，已删除。
     /// </summary>
-    private static bool TryGetVolumeSerial(IntPtr handle, out ulong serial)
+    internal static string VolumePrefixOf(string path)
     {
-        serial = 0;
-        int size = Marshal.SizeOf<FileLockNative.FileIdInfo128>();
-        IntPtr buffer = Marshal.AllocHGlobal(size);
-        try
+        string p = NormalizeFinalPath(path);
+        if (p.StartsWith(@"\\", StringComparison.Ordinal))          // UNC：\\server\share\...
         {
-            if (!FileLockNative.GetFileInformationByHandleEx(
-                    handle, FileLockNative.FileIdInfo, buffer, (uint)size))
-                return false;
+            int first = p.IndexOf('\\', 2);
+            if (first < 0) return p;
+            int second = p.IndexOf('\\', first + 1);
+            return second < 0 ? p : p[..second];
+        }
 
-            serial = Marshal.PtrToStructure<FileLockNative.FileIdInfo128>(buffer).VolumeSerialNumber;
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
-        finally
-        {
-            Marshal.FreeHGlobal(buffer);
-        }
+        return p.Length >= 2 && p[1] == ':' ? p[..2] : "";
+    }
+
+    // ---------- 卡死句柄的记账 ----------
+
+    /// <summary>
+    /// 已知会卡死的句柄（pid + 句柄值）。实测本机 **RadeonSoftware** 持有的一个读句柄对**任何**
+    /// 文件系统查询（GetFileInformationByHandleEx / GetFinalPathNameByHandleW）都会挂；而每次
+    /// 「发现—跳过」都会在我们进程里泄漏一个副本句柄，副本下次扫描又成了新的卡死项
+    /// （实测同一进程内连扫 GuardedHandles 会 1 → 2 → 4 → 8 地涨）。登记之后，后续扫描在查询
+    /// 之前就跳过，同一进程内的规模被限制为「每个卡死句柄只发现一次」。
+    ///
+    /// 为什么不拿 Object 指针当身份：句柄表快照里**外部进程**条目的 Object 字段读出来是 0
+    /// （内核只给自己进程的条目填对象指针）。pid + 句柄值在句柄存活期间稳定——我们自己泄漏的
+    /// 副本恰好把那些值钉住了，不会被系统回收给别的句柄；再叠加 ObjectTypeIndex 相等做二次确认，
+    /// 降低「句柄值被回收成另一个同号句柄」时的误跳概率。误跳会如实计入 GuardedHandles。
+    /// </summary>
+    private static readonly ConcurrentDictionary<(int Pid, ulong Handle), ushort> KnownHungHandles = new();
+
+    /// <summary>
+    /// 已知会卡死的**对象**（Object 指针）。只对我们自己进程的条目可读——泄漏在外的副本句柄
+    /// 正是我们自己的，所以第一次在我们这边卡住时就能读到它，之后凡是引用同一对象的句柄
+    /// （包括我们下次扫描才会碰到的那些副本）一次性跳过。对象被我们持有，指针不会被回收。
+    /// </summary>
+    private static readonly ConcurrentDictionary<long, byte> KnownHungObjects = new();
+
+    /// <summary>防御上限：真出问题时也不让登记表无限长大（超限只是不再免疫，仍如实计数）。</summary>
+    private const int MaxKnownHungHandles = 256;
+
+    private static bool IsKnownHungHandle(int pid, ulong handleValue, ushort objectTypeIndex, IntPtr kernelObject)
+        => (KnownHungHandles.TryGetValue((pid, handleValue), out ushort knownType)
+                && knownType == objectTypeIndex)
+            || (kernelObject != IntPtr.Zero && KnownHungObjects.ContainsKey(kernelObject.ToInt64()));
+
+    /// <summary>把「卡住的那个分片正在处理的句柄」登记下来（索引必须落在句柄表内）。</summary>
+    private static void RememberHungObject(IntPtr buffer, int count, int index)
+    {
+        if (index < 0 || index >= count) return;
+        if (KnownHungHandles.Count >= MaxKnownHungHandles) return;
+
+        var entry = Marshal.PtrToStructure<FileLockNative.SystemHandleTableEntryInfoEx>(
+            EntryPointer(buffer, index, Marshal.SizeOf<FileLockNative.SystemHandleTableEntryInfoEx>()));
+        int pid = unchecked((int)entry.UniqueProcessId.ToUInt64());
+        ulong handle = entry.HandleValue.ToUInt64();
+        if (handle == 0) return;
+
+        if (KnownHungHandles.TryAdd((pid, handle), entry.ObjectTypeIndex))
+            Debug.WriteLine($"[FileLock] 登记卡死句柄 pid={pid} handle=0x{handle:X}"
+                + $"（type={entry.ObjectTypeIndex}）：后续扫描直接跳过");
+
+        // 能读到对象指针就一并登记（管理员上下文里自家进程的条目才读得到）：下次扫描里指向同一对象
+        // 的句柄全部跳过。对象被我们泄漏的副本持有，指针不会被回收。
+        if (entry.Object != IntPtr.Zero && KnownHungObjects.TryAdd(entry.Object.ToInt64(), 0))
+            Debug.WriteLine($"[FileLock] 登记卡死对象 0x{entry.Object.ToInt64():X}（同一对象的句柄后续一并跳过）");
     }
 
     // ---------- 匹配（internal static，便于单测） ----------
 
     /// <summary>
-    /// 判断候选句柄名是否指向目标。比较的是内核设备名（\Device\HarddiskVolumeN\...），
-    /// 因此不受 DriveLetter / subst 影响。
+    /// 判断候选句柄名是否指向目标。主路径双方都是 final path（\\?\C:\...），兜底路径双方都是
+    /// 内核设备名（\Device\HarddiskVolumeN\...）——比较只做相等与前缀判断，与名字的形式无关，
+    /// 也因此不受盘符别名影响。
     /// 文件：完全相等（不区分大小写）；
     /// 目录：相等或目标前缀 + '\\'——必须带分隔符，否则 "\...\dir" 会误配 "\...\directory"。
     /// </summary>
@@ -632,6 +699,49 @@ public static class FileLockService
         return 0;
     }
 
+    // ---------- 句柄名（final path 主路径 + 对象名兜底） ----------
+
+    /// <summary>
+    /// 句柄的最终路径（\\?\C:\...）。走文件系统解析，不做对象管理器的同步查询，
+    /// 因此不会像 NtQueryObject 那样在个别句柄上永久阻塞（本机实测 1 万+ 同卷磁盘句柄
+    /// 全部即时返回）。取不到（已删除 / 权限受限）返回 null，由调用方退回对象名查询。
+    /// </summary>
+    private static string? QueryFinalPath(IntPtr handle)
+    {
+        var buffer = new StringBuilder(1024);
+        uint length = FileLockNative.GetFinalPathNameByHandleW(
+            handle, buffer, (uint)buffer.Capacity, FileLockNative.VolumeNameDos);
+        if (length == 0) return null;
+
+        if (length >= buffer.Capacity)
+        {
+            buffer = new StringBuilder((int)length + 1);
+            length = FileLockNative.GetFinalPathNameByHandleW(
+                handle, buffer, (uint)buffer.Capacity, FileLockNative.VolumeNameDos);
+            if (length == 0 || length >= buffer.Capacity) return null;
+        }
+
+        return buffer.ToString();
+    }
+
+    /// <summary>
+    /// 显示用：去掉 final path 的 \\?\ 前缀（\\?\UNC\srv\share → \\srv\share）。
+    /// 只对盘符路径与 UNC 去前缀；卷 GUID 路径（\\?\Volume{…}\…）原样保留，
+    /// 免得拼出一个并不存在的普通路径。
+    /// </summary>
+    internal static string NormalizeFinalPath(string finalPath)
+    {
+        if (finalPath.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase))
+            return @"\\" + finalPath[8..];
+
+        if (finalPath.StartsWith(@"\\?\", StringComparison.Ordinal)
+            && finalPath.Length > 6 && char.IsLetter(finalPath[4]) && finalPath[5] == ':' && finalPath[6] == '\\')
+            return finalPath[4..];
+
+        return finalPath;
+    }
+
+    /// <summary>对象名兜底：NtQueryObject(ObjectNameInformation)。可能阻塞，只在 final path 取不到时调用。</summary>
     private static string? QueryObjectName(IntPtr handle)
     {
         int size = 1024;
@@ -668,7 +778,7 @@ public static class FileLockService
 
     // ---------- 显示路径映射 ----------
 
-    /// <summary>设备名（\Device\HarddiskVolume3）→ 盘符（C:）。仅用于显示，匹配仍用内核名。</summary>
+    /// <summary>设备名（\Device\HarddiskVolume3）→ 盘符（C:）。只服务兜底路径（NtQueryObject 的内核名）的显示。</summary>
     private static Dictionary<string, string> BuildDeviceMap()
     {
         var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -781,10 +891,11 @@ public static class FileLockService
     /// </summary>
     private sealed class ScanState
     {
+        private readonly string _targetFinalPath;
         private readonly string _targetKernelName;
         private readonly bool _isDirectory;
         private readonly ushort _fileTypeIndex;
-        private readonly ulong _targetVolumeSerial;
+        private readonly string _targetVolumePrefix;
         private readonly IReadOnlyDictionary<string, string> _deviceMap;
 
         private readonly Dictionary<int, (string Name, string Path, DateTime? StartUtc)> _processCache = new();
@@ -805,13 +916,15 @@ public static class FileLockService
         private readonly List<Runner> _runners = new();
         private int _runnerSeq;
 
-        public ScanState(string targetKernelName, bool isDirectory, ushort fileTypeIndex,
-            ulong targetVolumeSerial, IReadOnlyDictionary<string, string> deviceMap)
+        public ScanState(string targetFinalPath, string targetKernelName, string targetVolumePrefix, bool isDirectory,
+            ushort fileTypeIndex, IReadOnlyDictionary<string, string> deviceMap)
         {
+            _targetFinalPath = targetFinalPath;
             _targetKernelName = targetKernelName;
+            _targetVolumePrefix = targetVolumePrefix;
             _isDirectory = isDirectory;
             _fileTypeIndex = fileTypeIndex;
-            _targetVolumeSerial = targetVolumeSerial;
+            _targetVolumePrefix = targetVolumePrefix;
             _deviceMap = deviceMap;
         }
 
@@ -832,9 +945,19 @@ public static class FileLockService
 
         private int _scannedHandles;
         private int _guardedHandles;
+        private int _exhaustedRunners;
 
         public int ScannedHandles => Volatile.Read(ref _scannedHandles);
         public int GuardedHandles => Volatile.Read(ref _guardedHandles);
+
+        /// <summary>
+        /// 已登记为「卡在片尾 / 已被续跑覆盖」的分片数：我们不再等它们，但它们的区间已经
+        /// 扫完（缺的只是正处理的那一个句柄）。收尾判定用它区分真截断——见 RunWithWatchdog。
+        /// 只增不减：是否截断只在循环结束的那一瞬间读一次。
+        /// </summary>
+        public int ExhaustedRunners => Volatile.Read(ref _exhaustedRunners);
+
+        private void MarkRunnerExhausted() => Interlocked.Increment(ref _exhaustedRunners);
 
         public int SkippedProcesses
         {
@@ -918,12 +1041,35 @@ public static class FileLockService
             int resumed = 0;
             foreach (var runner in stalled)
             {
+                int stuckAt = Volatile.Read(ref runner.Index);
+
+                // 它卡在哪一个句柄上：把那个对象登记下来，后续扫描在查询之前就跳过。
+                // 不登记的话，每跳过一次都会泄漏一个副本句柄，副本下次扫描又成为新的卡死项
+                // （实测空闲三连扫的 GuardedHandles 会 1 → 2 → 4 地涨）。
+                RememberHungObject(buffer, count, stuckAt);
+
+                // 再把卡住的那个**副本句柄**收回来关掉：卡住的线程自己关不了（finally 永远跑不到），
+                // 不回收就会永久泄漏、并在下一次扫描里变成新的卡死项（登记只能治「旧的那一个」）。
+                IntPtr stuckHandle = Interlocked.Exchange(ref runner.QueryingHandle, IntPtr.Zero);
+                if (stuckHandle != IntPtr.Zero)
+                {
+                    FileLockNative.CloseHandle(stuckHandle);
+                    Debug.WriteLine($"[FileLock] 已回收卡死分片持有的副本句柄 0x{stuckHandle.ToInt64():X}");
+                }
+
                 // 逻辑放弃与物理完成必须分开：把仍卡着的线程提前标成 Done，看门狗会以为分片都收尾了，
                 // 而它名下的快照持有名额永远不回还（快照再也释放不掉）。
                 bool alreadyAbandoned = Interlocked.CompareExchange(ref runner.Abandoned, 1, 0) == 1;
-                int stuckAt = Volatile.Read(ref runner.Index);
+
                 if (!TryPlanResume(runner.Start, runner.End, stuckAt, alreadyAbandoned, out int resumeFrom))
+                {
+                    // 没有剩余区间可扫：卡在片尾，或早先已被续跑覆盖。前者是本轮新放弃的分片，
+                    // 它正处理的那个句柄确实没有结论，要计数；后者不重复计数。
+                    MarkRunnerExhausted();
+                    if (!alreadyAbandoned)
+                        Interlocked.Increment(ref _guardedHandles);
                     continue;
+                }
 
                 // 记入 GuardedHandles：这个句柄因为会卡死被跳过了，用户有权知道可能漏报。
                 Interlocked.Increment(ref _guardedHandles);
@@ -1007,7 +1153,16 @@ public static class FileLockService
             /// 快照持有名额永远不回还——整块快照再也释放不掉。
             /// 仅用 Interlocked 访问。
             /// </summary>
-            public int Abandoned;
+                            public int Abandoned;
+
+                            /// <summary>
+                            /// 分片当前正在查询的那个副本句柄（查询前发布，查询返回后由自己或看门狗取走）。
+                            /// 看门狗发现分片卡死时会把它**关掉**——这个副本是我们复制出来的，卡住的线程
+                            /// 的 finally 永远跑不到，不回收就会永久泄漏，下一次扫描里又成为一个新的卡死项。
+                            /// 谁拿到发布槽谁负责关闭（恰好一次）：重复关可能撞上句柄值被回收、误关别人的句柄。
+                            /// 仅用 Interlocked/Volatile 访问。
+                            /// </summary>
+                            public IntPtr QueryingHandle;
         }
 
         private void EnumerateRange(Runner runner, IntPtr buffer, int totalCount,
@@ -1050,6 +1205,14 @@ public static class FileLockService
                         continue;
                     }
 
+                    // 已知会卡死的句柄（pid + 句柄值）：连打开/查询都不做，直接跳过（计入 GuardedHandles，用户可见）。
+                    // 登记发生在真的卡过之后——见 RecoverStalled / RememberHungObject。
+                    if (IsKnownHungHandle(pid, entry.HandleValue.ToUInt64(), entry.ObjectTypeIndex, entry.Object))
+                    {
+                        Interlocked.Increment(ref _guardedHandles);
+                        continue;
+                    }
+
                     IntPtr sourceProcess = FileLockNative.OpenProcess((int)FileLockNative.ProcessDupHandle, false, pid);
                     if (sourceProcess == IntPtr.Zero)
                     {
@@ -1069,30 +1232,44 @@ public static class FileLockService
 
                         try
                         {
+                            // 把「正在查询的句柄」发布出去：一旦这里卡死，看门狗会替我们把它关掉
+                            //（不回收的话这个副本会永久泄漏，下次扫描又成为新的卡死项）。
+                            Volatile.Write(ref runner.QueryingHandle, local);
+
                             // 第 3 层：只处理磁盘文件/目录（管道、事件、互斥体等在这里被剔除）。
-                            // 这一层同时就是**防卡死的屏障**：NtQueryObject 只在管道/设备这类
-                            // 同步对象上才会永久阻塞，而它们全都过不了 GetFileType == FILE_TYPE_DISK。
+                            // 注意：**磁盘句柄也可能卡**——实测某驱动持有的句柄对任何文件系统查询
+                            // 都会挂，所以这层只是降低查询量，不能当「屏障」；真正的兜底是分片看门狗
+                            // 加 KnownHungObjects 登记（卡过的对象下次直接跳过）。
                             if (FileLockNative.GetFileType(local) != FileLockNative.FileTypeDisk) continue;
 
-                            // 第 4 层：同卷预筛。卷序列号取不到（设备/远端/权限不足）或与目标不同卷的，
-                            // 一律跳过——它们不可能命中目标，而下一层的 NtQueryObject 恰恰是唯一
-                            // 可能长时间阻塞的一步（实测某显卡驱动的一个句柄能卡住 10 秒以上）。
-                            if (_targetVolumeSerial != 0)
+                            // 第 4 层：取名。final path 是主路径（GetFinalPathNameByHandleW）；
+                            // 取不到（已删除 / 权限受限的句柄）才退回 NtQueryObject 兜底。
+                            string? rawFinalPath = QueryFinalPath(local);
+                            if (!string.IsNullOrEmpty(rawFinalPath))
                             {
-                                if (!TryGetVolumeSerial(local, out ulong volumeSerial)) continue;
-                                if (volumeSerial != _targetVolumeSerial) continue;
+                                string finalPath = NormalizeFinalPath(rawFinalPath);
+
+                                // 第 5 层：同卷预筛 + 匹配。纯字符串比较——不再查卷序列号，
+                                // 那一步（GetFileInformationByHandleEx(FileIdInfo)）本身会卡死。
+                                if (!finalPath.StartsWith(_targetVolumePrefix, StringComparison.OrdinalIgnoreCase)) continue;
+                                if (!MatchesTargetPath(_targetFinalPath, finalPath, _isDirectory)) continue;
+                                AddHit(pid, finalPath);
+                                continue;
                             }
 
-                            // 第 5 层：只有走到这里的存活句柄才敢查名字
+                            // 兜底路径：对象名（内核设备名）对目标的内核名
+                            if (_targetKernelName.Length == 0) continue;
                             string? name = QueryObjectName(local);
                             if (name is null) continue;
                             if (!MatchesTargetPath(_targetKernelName, name, _isDirectory)) continue;
 
-                            AddHit(pid, name);
+                            AddHit(pid, ToDisplayPath(name, _deviceMap));
                         }
                         finally
                         {
-                            FileLockNative.CloseHandle(local);
+                            // 谁取到发布槽谁负责关闭：看门狗已经替我们关过（返回 0）就不重复关
+                            if (Interlocked.Exchange(ref runner.QueryingHandle, IntPtr.Zero) != IntPtr.Zero)
+                                FileLockNative.CloseHandle(local);
                         }
                     }
                     finally
@@ -1102,7 +1279,7 @@ public static class FileLockService
                 }
         }
 
-        private void AddHit(int pid, string kernelName)
+        private void AddHit(int pid, string displayPath)
         {
             lock (_resultLock)
             {
@@ -1112,7 +1289,7 @@ public static class FileLockService
                     builder = new EntryBuilder(pid, name, path, startUtc);
                     _builders[pid] = builder;
                 }
-                builder.Add(ToDisplayPath(kernelName, _deviceMap));
+                builder.Add(displayPath);
             }
         }
 

@@ -77,26 +77,20 @@ internal static class FileLockNative
     [DllImport("kernel32.dll", SetLastError = true)]
     internal static extern uint GetFileType(IntPtr file);
 
-    /// <summary>FILE_INFO_BY_HANDLE_CLASS.FileIdInfo。用来取卷序列号做同卷预筛（不解析路径）。</summary>
-    internal const int FileIdInfo = 18;
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    internal static extern bool GetFileInformationByHandleEx(
-        IntPtr file, int fileInformationClass, IntPtr fileInformation, uint bufferSize);
+    /// <summary>GetFinalPathNameByHandleW 的 dwFlags：返回盘符形式（\\?\C:\...）。</summary>
+    internal const uint VolumeNameDos = 0;
 
     /// <summary>
-    /// FILE_ID_INFO：{ ULONGLONG VolumeSerialNumber; FILE_ID_128 FileId; }。
-    /// 这里只用卷序列号做「是否与目标同卷」的预筛——设备句柄、远端句柄取不到，
-    /// 正好被这一层挡在 NtQueryObject 之前。
+    /// 取句柄对应的最终路径。**向文件系统要名字**，不做对象管理器的同步查询。
+    /// 取不到（已删除 / 权限受限）返回 0，调用方退回 NtQueryObject 兜底。
+    ///
+    /// 注意：文件系统查询本身在个别句柄上仍可能卡死（实测某驱动持有的句柄对
+    /// GetFinalPathNameByHandleW / GetFileInformationByHandleEx 都挂），
+    /// 兜底是 FileLockService 的分片看门狗 + KnownHungObjects 登记。
     /// </summary>
-    [StructLayout(LayoutKind.Sequential)]
-    internal struct FileIdInfo128
-    {
-        public ulong VolumeSerialNumber;
-
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 16)]
-        public byte[] FileId;
-    }
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    internal static extern uint GetFinalPathNameByHandleW(
+        IntPtr hFile, System.Text.StringBuilder lpszFilePath, uint cchFilePath, uint dwFlags);
 
     [DllImport("kernel32.dll")]
     internal static extern IntPtr GetCurrentProcess();

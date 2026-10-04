@@ -134,6 +134,38 @@ public class FileLockMatchingTests
         Assert.False(FileLockService.MatchesTargetPath(target!, candidate!, isDirectory: false));
     }
 
+    // ---------- final path 的显示归一化 ----------
+
+    [Theory]
+    [InlineData(@"\\?\C:\Users\me\docs", @"C:\Users\me\docs")]
+    [InlineData(@"\\?\C:\", @"C:\")]
+    [InlineData(@"\\?\UNC\server\share\dir", @"\\server\share\dir")]
+    [InlineData(@"\\?\Volume{9f0e2a3b-0000-0000-0000-100000000000}\dir",
+                @"\\?\Volume{9f0e2a3b-0000-0000-0000-100000000000}\dir")]
+    [InlineData(@"C:\already\plain", @"C:\already\plain")]
+    public void FinalPathDisplay_DropsExtendedPrefixOnlyWhenSafe(string input, string expected)
+        => Assert.Equal(expected, FileLockService.NormalizeFinalPath(input));
+
+    [Fact]
+    public void FinalPath_MatchingUsesSameRulesAsKernelName()
+    {
+        // 主路径双方都是 final path（带 \\?\ 前缀），目录边界规则必须与内核名完全一致
+        Assert.True(FileLockService.MatchesTargetPath(
+            @"\\?\C:\Users\me\docs", @"\\?\C:\Users\me\docs\report.docx", isDirectory: true));
+        Assert.False(FileLockService.MatchesTargetPath(
+            @"\\?\C:\Users\me\docs", @"\\?\C:\Users\me\docs-backup\x.txt", isDirectory: true));
+    }
+
+    [Theory]
+    [InlineData(@"C:\Users\me\docs", "C:")]
+    [InlineData(@"\\?\C:\Users\me", "C:")]
+    [InlineData(@"\\server\share\dir", @"\\server\share")]
+    [InlineData(@"\\?\UNC\server\share\dir", @"\\server\share")]
+    [InlineData("", "")]
+    [InlineData(@"relative\path", "")]
+    public void VolumePrefix_IsPureStringComparison(string path, string expected)
+        => Assert.Equal(expected, FileLockService.VolumePrefixOf(path));
+
     // ---------- 高危 GrantedAccess ----------
     //
     // 这里原本钉着 IsGuardedAccess(0x0012019F) == true。该判定已删除：
