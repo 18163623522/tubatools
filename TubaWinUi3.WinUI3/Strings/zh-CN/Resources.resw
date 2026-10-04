@@ -2892,6 +2892,27 @@
   <data name="FileLock_ErrorResolve" xml:space="preserve">
     <value>无法解析该路径（{0}）</value>
   </data>
+  <data name="FileLock_DetailCreateFileFailed" xml:space="preserve">
+    <value>无法打开该路径（错误码 {0}）</value>
+  </data>
+  <data name="FileLock_DetailNotDiskFile" xml:space="preserve">
+    <value>目标不是磁盘上的文件或目录</value>
+  </data>
+  <data name="FileLock_DetailDeviceNameUnavailable" xml:space="preserve">
+    <value>无法解析目标的设备名</value>
+  </data>
+  <data name="FileLock_DetailTypeIndexUnavailable" xml:space="preserve">
+    <value>无法确定文件对象的类型索引</value>
+  </data>
+  <data name="FileLock_DetailHandleTableTooLarge" xml:space="preserve">
+    <value>系统句柄表过大（需要 {0} 字节），已放弃扫描</value>
+  </data>
+  <data name="FileLock_DetailQuerySystemFailed" xml:space="preserve">
+    <value>查询系统句柄表失败（状态码 0x{0:X8}）</value>
+  </data>
+  <data name="FileLock_DetailUnexpected" xml:space="preserve">
+    <value>发生未预期的错误</value>
+  </data>
   <data name="FileLock_Failed" xml:space="preserve">
     <value>操作失败</value>
   </data>
@@ -2915,6 +2936,9 @@
   </data>
   <data name="FileLock_KillSelf" xml:space="preserve">
     <value>不能结束图吧工具箱自身进程。</value>
+  </data>
+  <data name="FileLock_KillStale" xml:space="preserve">
+    <value>该进程已退出或 PID 已被复用，为避免误杀，请重新扫描后再试。</value>
   </data>
   <data name="FileLock_KillFailedMsg" xml:space="preserve">
     <value>无法结束进程 {0} (PID {1})：{2}</value>

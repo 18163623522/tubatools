@@ -154,8 +154,12 @@ internal static class FileLockNative
     // 真正需要挡住的命名管道由 FileLockService 里的 GetFileType == FILE_TYPE_DISK 负责
     // （它在 NtQueryObject 之前执行），不依赖 GrantedAccess。
 
-    /// <summary>句柄表查询缓冲起点 64KB，不足时翻倍，上限 512MB（防御异常大的系统）。</summary>
+    /// <summary>句柄表查询缓冲起点 64KB，不足时翻倍，上限 64MB（约 160 万句柄，覆盖常见系统）。</summary>
     internal const int InitialHandleBufferSize = 64 * 1024;
 
-    internal const int MaxHandleBufferSize = 512 * 1024 * 1024;
+    /// <summary>
+    /// 上限从 512MB 收紧到 64MB：512MB 的 AllocHGlobal 失败或提交代价本身就是风险，
+    /// 而超过 160 万句柄的系统极罕见——真遇到就明确报错，而不是先吃掉半 GB 内存。
+    /// </summary>
+    internal const int MaxHandleBufferSize = 64 * 1024 * 1024;
 }

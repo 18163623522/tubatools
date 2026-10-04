@@ -2876,6 +2876,27 @@ Permissions
   <data name="FileLock_ErrorResolve" xml:space="preserve">
     <value>Could not resolve this path ({0})</value>
   </data>
+  <data name="FileLock_DetailCreateFileFailed" xml:space="preserve">
+    <value>Could not open this path (error {0})</value>
+  </data>
+  <data name="FileLock_DetailNotDiskFile" xml:space="preserve">
+    <value>The target is not a file or folder on a disk</value>
+  </data>
+  <data name="FileLock_DetailDeviceNameUnavailable" xml:space="preserve">
+    <value>Could not resolve the target's device name</value>
+  </data>
+  <data name="FileLock_DetailTypeIndexUnavailable" xml:space="preserve">
+    <value>Could not determine the file object's type index</value>
+  </data>
+  <data name="FileLock_DetailHandleTableTooLarge" xml:space="preserve">
+    <value>The system handle table is too large (needs {0} bytes); the scan was aborted</value>
+  </data>
+  <data name="FileLock_DetailQuerySystemFailed" xml:space="preserve">
+    <value>Failed to query the system handle table (status 0x{0:X8})</value>
+  </data>
+  <data name="FileLock_DetailUnexpected" xml:space="preserve">
+    <value>An unexpected error occurred</value>
+  </data>
   <data name="FileLock_Failed" xml:space="preserve">
     <value>Action failed</value>
   </data>
@@ -2899,6 +2920,9 @@ Permissions
   </data>
   <data name="FileLock_KillSelf" xml:space="preserve">
     <value>Cannot end the TubaToolbox process itself.</value>
+  </data>
+  <data name="FileLock_KillStale" xml:space="preserve">
+    <value>That process has exited or its PID was reused. Rescan and try again to avoid ending the wrong process.</value>
   </data>
   <data name="FileLock_KillFailedMsg" xml:space="preserve">
     <value>Could not end {0} (PID {1}): {2}</value>

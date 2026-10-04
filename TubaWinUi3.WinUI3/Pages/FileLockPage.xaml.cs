@@ -114,9 +114,10 @@ public sealed partial class FileLockPage : Page, ILocalizablePage
 
     private void PickFileBtn_Click(object sender, RoutedEventArgs e)
     {
-        var picked = Win32Dialogs.PickOpen(
-            "所有文件 (*.*)\0*.*\0\0",
-            L("FileLock_PickFile.Text", "选择文件"));
+        // 过滤器文案也是给用户看的（原生对话框的「文件类型」下拉），随语言走；
+        // 键与格式沿用设置页（SettingsPage 的 AllFilesFilter 用法），"名称\0模式\0\0"。
+        var filter = L("Settings_AllFilesFilter", "所有文件") + "\0*.*\0\0";
+        var picked = Win32Dialogs.PickOpen(filter, L("FileLock_PickFile.Text", "选择文件"));
         if (!string.IsNullOrWhiteSpace(picked)) PathBox.Text = picked;
     }
 
@@ -224,8 +225,11 @@ public sealed partial class FileLockPage : Page, ILocalizablePage
                 FileLockScanError.EmptyPath => L("FileLock_ErrorNoPath", "请先输入或选择要检查的文件 / 目录路径"),
                 FileLockScanError.NotFound => L("FileLock_ErrorNotFound", "找不到该文件或目录，请检查路径是否正确。"),
                 FileLockScanError.ResolveFailed => string.Format(
-                    L("FileLock_ErrorResolve", "无法解析该路径（{0}）"), result.ErrorDetail ?? ""),
-                _ => string.Format(L("FileLock_ErrorFailed", "扫描失败：{0}"), result.ErrorDetail ?? "")
+                    L("FileLock_ErrorResolve", "无法解析该路径（{0}）"),
+                    FileLockErrorText.Describe(result.Failure, result.FailureCode)),
+                _ => string.Format(
+                    L("FileLock_ErrorFailed", "扫描失败：{0}"),
+                    FileLockErrorText.Describe(result.Failure, result.FailureCode))
             });
             return;
         }
@@ -515,6 +519,17 @@ public sealed partial class FileLockPage : Page, ILocalizablePage
         // 复用统一的并发守卫：同一时刻只允许一个 ContentDialog，失败一律按「未确认」处理。
         await ContentDialogGuard.ShowWhenIdleAsync(dialog, TimeSpan.FromSeconds(5));
         if (!confirmed || !_isPageAlive) return;
+
+        // 对话框期间目标可能已退出、PID 可能被系统复用：动手前核对身份，避免误杀无关进程。
+        if (FileLockService.VerifyProcessIdentity(entry.ProcessId, entry.ProcessName, entry.ProcessPath, entry.StartTimeUtc)
+            != ProcessIdentityCheck.Match)
+        {
+            ErrorBar.Title = L("FileLock_KillFailed", "结束进程失败");
+            ErrorBar.Message = L("FileLock_KillStale", "该进程已退出或 PID 已被复用，为避免误杀，请重新扫描后再试。");
+            ErrorBar.Severity = InfoBarSeverity.Warning;
+            ErrorBar.IsOpen = true;
+            return;
+        }
 
         if (!PortViewerService.KillProcess(entry.ProcessId, out var error))
         {
