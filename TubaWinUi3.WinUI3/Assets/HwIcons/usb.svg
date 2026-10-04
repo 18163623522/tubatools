@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <!-- usb 接口 -->
+  <path fill="none" d="M12 4.5V18" stroke="#5C6670" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path fill="none" d="M12 12.5L9 10V8.5" stroke="#5C6670" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path fill="none" d="M12 9L15 7V5.5" stroke="#5C6670" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path fill="none" d="M7.5 8.5A1.5 1.5 0 1 1 10.5 8.5A1.5 1.5 0 1 1 7.5 8.5Z" stroke="#5C6670" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path fill="none" d="M13.5 4H16.5V7H13.5V4Z" stroke="#5C6670" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M10.5 18H13.5V20.5H10.5V18Z" fill="#9AA4AE"/>
+</svg>

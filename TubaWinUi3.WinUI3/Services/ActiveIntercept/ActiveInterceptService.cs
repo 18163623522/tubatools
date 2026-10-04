@@ -73,7 +73,7 @@ public static class ActiveInterceptService
     public static bool Start()
     {
         // MSIX 打包模式下不支持主动拦截后端（沙箱限制无法启动独立进程）
-        if (RuntimeHelper.IsMsixPackaged)
+        if (RuntimeHelper.IsPackagedContext)
         {
             System.Diagnostics.Debug.WriteLine("[ActiveIntercept] MSIX 模式下不支持主动拦截后端");
             return false;
@@ -212,7 +212,7 @@ public static class ActiveInterceptService
     /// </summary>
     public static void SyncBackend()
     {
-        if (RuntimeHelper.IsMsixPackaged) return;
+        if (RuntimeHelper.IsPackagedContext) return;
 
         if (AnyFeatureEnabled)
         {
@@ -238,7 +238,7 @@ public static class ActiveInterceptService
     /// <summary>重启后端使配置变更生效（仅在任一功能开启时有意义）。</summary>
     public static void RestartBackend()
     {
-        if (RuntimeHelper.IsMsixPackaged) return;
+        if (RuntimeHelper.IsPackagedContext) return;
         if (!AnyFeatureEnabled) return;
         Stop();
         Start();

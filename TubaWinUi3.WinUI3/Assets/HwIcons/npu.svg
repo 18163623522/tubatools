@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <!-- npu AI 加速器 -->
+  <path fill="none" d="M7 8.5C7 7.67 7.67 7 8.5 7H14.5C15.33 7 16 7.67 16 8.5V14.5C16 15.33 15.33 16 14.5 16H8.5C7.67 16 7 15.33 7 14.5V8.5Z" stroke="#986F0B" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path fill="none" d="M9 5V7M12.5 5V7M9 16V18M12.5 16V18M5 9.5H7M5 13H7M16 9.5H18M16 13H18" stroke="#986F0B" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M18.5 6L19.2 7.8L21 8.5L19.2 9.2L18.5 11L17.8 9.2L16 8.5L17.8 7.8L18.5 6Z" fill="#E3B737"/>
+</svg>

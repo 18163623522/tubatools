@@ -1050,7 +1050,7 @@ public static class ToolCatalog
 
      private static string FindToolsRoot()
      {
-         if (RuntimeHelper.IsMsixPackaged)
+         if (RuntimeHelper.IsPackagedContext)
          {
              return Path.Combine(
                  RuntimeHelper.GetLocalAppDataRoot(),

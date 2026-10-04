@@ -43,6 +43,14 @@
   MIT License，Copyright (c) Microsoft Corporation。
   上游项目：https://github.com/microsoft/PowerToys
 
+- **文件占用查看的右键菜单处理程序**（`TubaWinUI3.ShellExtension/`，Win11 新版菜单 `IExplorerCommand`）
+  按 Microsoft Learn 官方文档《Add a File Explorer context menu command to a packaged desktop app》
+  的接口契约实现（接口 GUID 均为 Windows SDK 公共定义，未复制示例源码）；
+  包清单中 `windows.comServer` / `windows.fileExplorerContextMenus` / 执行别名的组合形态
+  参照 **NanaZip** 的公开包清单实践（MIT License，Copyright (c) Mouri Naruto），未复制其源码。
+  文档：https://learn.microsoft.com/en-us/windows/apps/desktop/modernize/integrate-packaged-app-with-file-explorer
+  参照项目：https://github.com/M2Team/NanaZip
+
 ---
 
 # Third-Party Notice (English)
@@ -90,3 +98,12 @@ The following features are managed-code **re-implementations** modelled on upstr
   Modelled on the File Locksmith module of Microsoft **PowerToys** (`src/modules/FileLocksmith/`),
   MIT License, Copyright (c) Microsoft Corporation.
   Upstream: https://github.com/microsoft/PowerToys
+
+- **File-locksmith Explorer context-menu handler** (`TubaWinUI3.ShellExtension/`, Windows 11 modern menu `IExplorerCommand`)
+  Implemented against the interface contract from Microsoft Learn's "Add a File Explorer context menu command to a
+  packaged desktop app" (all interface GUIDs are public Windows SDK definitions; no sample source was copied).
+  The packaging combination of `windows.comServer` / `windows.fileExplorerContextMenus` / execution alias in the
+  package manifest follows the publicly available manifest practice of **NanaZip** (MIT License,
+  Copyright (c) Mouri Naruto); no source files were copied from it.
+  Docs: https://learn.microsoft.com/en-us/windows/apps/desktop/modernize/integrate-packaged-app-with-file-explorer
+  Reference project: https://github.com/M2Team/NanaZip

@@ -45,7 +45,7 @@ public static class BuiltinToolRegistry
         Register(new GameMonitorTool());
         Register(new GameMonitorRecordsTool());
         Register(new GameTunnelTool());
-        if (!RuntimeHelper.IsMsixPackaged)
+        if (!RuntimeHelper.IsPackagedContext)
             Register(new CommunityToolBuiltinTool());
         Register(new ScreenTestTool());
         Register(new ServiceCenterTool());

@@ -447,7 +447,7 @@ public sealed partial class HomePage : Page, ILocalizablePage
                 && string.IsNullOrEmpty(query)
                 && _selectedTag is null
                 && _category is null
-                && RuntimeHelper.IsMsixPackaged
+                && RuntimeHelper.IsPackagedContext
                 && !ToolsBundleService.IsToolsBundleReady()
                     ? Visibility.Visible
                     : Visibility.Collapsed;

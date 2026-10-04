@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <!-- disk 硬盘 -->
+  <path fill="none" d="M4 8C4 7.17 4.67 6.5 5.5 6.5H18.5C19.33 6.5 20 7.17 20 8V16C20 16.83 19.33 17.5 18.5 17.5H5.5C4.67 17.5 4 16.83 4 16V8Z" stroke="#038387" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path fill="none" d="M8 12A3.5 3.5 0 1 1 15 12A3.5 3.5 0 1 1 8 12Z" stroke="#038387" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path fill="none" d="M16.5 9.5L13.5 12.5" stroke="#4DBFC4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M11 11A1 1 0 1 1 13 11A1 1 0 1 1 11 11Z" fill="#4DBFC4"/>
+</svg>

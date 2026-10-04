@@ -4,10 +4,11 @@
 
 A WinUI 3 (Windows App SDK / .NET 10) Chinese-language PC hardware toolbox ("图吧工具箱"). Catalogs and launches third-party diagnostic executables from a local `Tools/` folder, shows WMI/LibreHardwareMonitor hardware info, ships ~30 built-in utility tools, and does real-time hardware monitoring with an FPS overlay. UI strings are hardcoded Chinese — there is no resource/localization system.
 
-## Solution layout (4 projects in `TubaWinUi3.sln`, plus the standalone PE edition below)
+## Solution layout (5 projects in `TubaWinUi3.sln`, plus the standalone PE edition below)
 
 - `TubaWinUi3.WinUI3/` — **the app**. The only project you normally build/run; `dotnet` commands target `TubaWinUi3.WinUI3/TubaWinUi3.csproj`.
 - `TubaWinUI3.BackEnd/` — a small **NativeAOT helper process** (`TubaWinUI3.BackEnd.exe`) used by the 主动拦截 (active intercept) feature; managed by `ActiveInterceptService`. The main csproj's `CopyBackendForBuild` target copies its framework-dependent output after every `dotnet build`, and `PublishBackend` builds/publishes the AOT version during `dotnet publish`.
+- `TubaWinUI3.ShellExtension/` — a **NativeAOT COM DLL** (`TubaWinUi3.ShellExtension.dll`) implementing `IExplorerCommand`: the Windows 11 modern context-menu handler for 文件占用查看, loaded by dllhost via the package manifest (`com:SurrogateServer`). Built by `build-shell-ext-aot.ps1`; included in MSIX builds only (`-p:IncludeShellExtension=true`); shares `Services/FileLock/FileLockShellMenuContract.cs` via linked `Compile`. See the feature section below.
 - `TubaWinUi3.Compatible/` — a separate **.NET Framework 4.8 WinForms** edition (`图吧工具箱Winui3兼容版.exe`, ReaLTaiizor Crown theme + Costura.Fody single-file). NOT WinUI 3 and NOT .NET 10 — different toolchain, different conventions. **No longer bundled into portable zips** — that slot is taken by the PE edition (next bullet). Do not mix its patterns into the main app. Supports tools.json cross-category (`category` + `categories`) copies and splits each arch variant (x64/ARM64/x86) into its own tool card; `builtin` placement entries are skipped (WinForms can't run WinUI built-ins).
 - `TubaWinUi3.PECompatible/` — **PE 兼容版** (`图吧工具箱PE兼容版.exe`; MewUI Win32 host + GDI backend/text engine, .NET 10 self-contained single-file). Not in the `.sln` — target its csproj directly. Shares the Compatible project's models/services via linked `Compile` items; CI publishes it per-RID and bundles the exe into the portable/lite zips. Its Debug build auto-copies the output into the main app's Debug dir (`CopyToWinUiDebugDir` target → `TubaWinUi3.WinUI3/bin/**/Debug/<tfm>/win-<arch>/图吧工具箱PE兼容版/`), where the shared services walk up parent dirs to find `Tools/` + `Metadata/` — that's the intended local debugging flow.
 - `TubaWinUi3.Tests/` — **xUnit** tests (xUnit 2.9 + coverlet), referencing the main project via `InternalsVisibleTo`.
@@ -29,7 +30,7 @@ dotnet test --filter "FullyQualifiedName~ToolCatalogTests"        # one class / 
 - `WindowsPackageType=None` + `EnableMsixTooling=false` → runs unpackaged; no MSIX registration for dev.
 - **MSIX 自测**：`run-msix.ps1` 把现有构建输出（`bin/<Config>/<tfm>/win-<arch>`，含 exe/pri/Tools/Metadata/Assets）直接用开发者模式注册为 dev 包（identity `tubawinui3.dev`，与 Store 的 `DA3D64F4.winui3` 互不干扰），再从 `shell:AppsFolder` 激活启动 → 真实包身份。LocalFolder 数据在 `%LOCALAPPDATA%\Packages\tubawinui3.dev_<hash>\LocalState\TubaWinUi3\`。注意：注册的是可写 bin 目录，Store 那种「安装目录 ACL 只读」不模拟；要上架级验证走 `build-msix-store.ps1`。
 - **WebView2 + MSIX**：应用用 Evergreen 模式（`WebView2EnvironmentService` 的 `browserExecutableFolder: null`）。**打包应用只能通过包依赖图解析运行时**——清单必须声明 `Microsoft.WebView2` 框架包依赖（`Package.appxmanifest`、`build-msix-store.ps1` 的 `Write-CleanManifest`、`run-msix.ps1` 的 dev 清单三处都已加，微软 Store 安装时自动供应）。机器级 Evergreen 运行时对打包应用不可见：同一 exe 非打包正常、打包后 WebView2 完全不初始化（无 msedgewebview2 进程、数据目录不创建）。开发机自测前需先装一次框架包（下载页「WebView2 Runtime for use with MSIX apps」的 .msix，管理员 `Add-AppxPackage`），`run-msix.ps1` 有预检。
-- **Requires admin**: `App.OnLaunched` auto-elevates via the `runas` verb and `Exit()`s if not admin (unpackaged mode only). Headless command-line modes skip the window entirely: `EnergyStarStartupService.SilentArg` (EcoQoS throttling), `--copy-path`, `--toast`, `--show-active-intercept`.
+- **Requires admin**: `App.OnLaunched` auto-elevates via the `runas` verb and `Exit()`s if not admin (unpackaged mode only). Headless command-line modes skip the window entirely: `EnergyStarStartupService.SilentArg` (EcoQoS throttling), `--copy-path`, `--toast`, `--show-active-intercept`, and `--file-lock <路径>` (open the file-lock tool with a pre-filled path — used by the Explorer context menu).
 - `AllowUnsafeBlocks=true` (P/Invoke structs in `HardwareInfoService`).
 - Publish is self-contained; `PublishTrimmed=false`, `PublishReadyToRun=true` — trimming is never used.
 - **`.pri` gotcha**: after `dotnet publish`, copy `TubaWinUi3.pri` from `bin/<arch>/Release/.../<rid>/` into the publish output (CI does this; the app misbehaves without it).
@@ -143,6 +144,19 @@ dotnet test --filter "FullyQualifiedName~ToolCatalogTests"        # one class / 
 - **读取状态一律以 /query /status 为主**：未提权时 `/query /source` 直接返回「拒绝访问 (0x80070005)」，而 /status 仍然可用且带「源:」一行（`ParseSourceFromStatus`，中英标签都认）；`/query /configuration` 同理只在需要诊断报告时读取。服务运行状态/启动类型走 WMI `Win32_Service`（值恒为英文，不受系统语言影响），失败退回注册表 `Start`/`DelayedAutostart`。
 - 注册表读写一律用 `RegistryView.Registry64` 显式打开（x86 构建下 `HKLM\SYSTEM\...` 会被重定向到 Wow6432Node，读不到真实配置）。
 - 测试：`TimeSyncTests`（预设完整性、对等列表与标志位、地址校验、注册表字符串反查、SNTP 报文与偏移数学、w32tm 中英文/真实机器输出解析、健康检查判定、设置落盘）。
+
+### 文件占用查看的右键菜单集成（file-locksmith）
+
+- 「文件占用查看」可把入口加进资源管理器右键菜单（`Services/FileLock/FileLockShellMenuService.cs`；**首次打开工具页询问一次**，之后在页面底部「资源管理器右键菜单」折叠区随时开关）。两种模式：
+  - **便携/安装版（非打包）**：经典右键菜单（`HKCU\Software\Classes\{*|Directory}\shell\TubaWinUi3.FileLocksmith`，Win11 上位于「显示更多选项」），命令 = `"<exe>" --file-lock "%1"`，图标用内置工具彩色图标的 .ico；
+  - **MSIX 打包版（Win11）**：Win11 新版菜单。条目由**包清单静态声明**（不能运行时增删），开关 = 处理程序在 `GetState` 里按标记文件返回 `ECS_ENABLED`/`ECS_HIDDEN`。**四处清单必须同步**：`run-msix.ps1`（dev）、`build-msix-store.ps1`（商店）、`build-store.ps1`（旧版）、`Package.appxmanifest`（源参考）——`ShellExtensionManifestTests` 拦截 CLSID/DLL 路径/扩展声明漂移。**Win10 + MSIX 不支持**（页面显示说明）。
+- **处理程序 = `TubaWinUI3.ShellExtension`**：C# NativeAOT 原生 DLL（无 .NET 运行时依赖），导出 `DllGetClassObject`/`DllCanUnloadNow`，由 dllhost（包内 COM 代理）加载。与主程序**共享编译**契约文件 `Services/FileLock/FileLockShellMenuContract.cs`（CLSID、别名名、标记文件格式、经典命令行、提权脚本；仅 BCL，无 WinUI 依赖）。接口 vtable 顺序可对照 `Services/RogueCleaner/ContextMenuTitleProbe.cs` 的既有定义。
+- **构建链**：`build-shell-ext-aot.ps1`（镜像 `build-backend-aot.ps1`，需 MSVC 链接器）。dev：`run-msix.ps1` 在 DLL 缺失时自动构建（`-RebuildShellExt` 强制重建，DLL 被就地注册的包根引用）。发布：主 csproj 的 `PublishShellExtension` 目标，**仅当 `-p:IncludeShellExtension=true`**（商店脚本传；便携包不产出该 DLL，也不进 zip）。
+- **标记文件**：`<数据根>\TubaWinUi3\shell-menu\file-locksmith.txt`（第 1 行菜单标题、第 2 行悬停提示；随界面语言重写）。处理程序按 `%LocalAppData%` → 包 `LocalState`（PFN 解析）两处探测；打包版同时写两处（提权会话/虚拟化视图下都读得到）。
+- **点击菜单 → `--file-lock <路径>`** 直达 `FileLockPage`、预填路径并**自动扫描一次**（其余入口仍不自动扫描）。打包版处理程序经**执行别名**（`uap3:appExecutionAlias` → `%LocalAppData%\Microsoft\WindowsApps\TubaWinUi3.exe`）启动主程序（保留包身份、可带参数）；别名被用户关闭时回退包内 exe 直启。处理程序诊断日志：`%LocalAppData%\TubaWinUi3\shell-menu\handler.log`（64 KB 滚动）。
+- **「以管理员身份重新启动」按钮**（FileLockPage 顶部操作条，未提权时显示；打包版默认非管理员）：`App.TryRelaunchElevated` —— 非打包直接 `Verb=runas`；打包版打包进程直接 runas 会 0x32 失败，改走 **PowerShell 载体** `Start-Process -Verb RunAs`（仓库既有实测写法），并追加 `--msix-admin-session` + 环境变量 `TUBA_MSIX_LOCALSTATE=<LocalState>`。提权进程会丢失包身份，`RuntimeHelper.IsPackagedContext`（= `IsMsixPackaged || MsixAdminSession`）为这类会话恢复打包语义（数据根指向 LocalState、跳过自更新、隐藏社区工具、不启动后端等）——**所有「商店版应如何表现」的新判定都应走 `IsPackagedContext` 而不是 `IsMsixPackaged`**（物理打包判断才用后者）。提权重启成功后必须走 `App.RequestExit()`。
+- 已知限制：无单实例激活转发——每次点菜单会开新实例（与桌面快捷方式一致，托盘可能出现多个图标）；提权会话的 WebView2 依赖机器级 Evergreen 运行时（本工具链路不依赖 WebView2）。
+- 测试：`FileLockShellMenuTests`（契约纯逻辑：模式判定/命令构造/标记文件往返/提权脚本转义）、`ShellExtensionManifestTests`（四处清单 + 共享源码 + 发布开关一致性）。
 
 ### 硬件详细信息（HardwareDetailPage）— 瀑布流参数卡片
 

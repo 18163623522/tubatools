@@ -19,7 +19,7 @@ public static class GameMonitorBackendService
     public const string PromptedSettingKey = "GameMonitorBackendPrompted";
 
     /// <summary>当前环境是否支持本功能（MSIX 打包模式不支持启动独立后端）。</summary>
-    public static bool IsSupported => !RuntimeHelper.IsMsixPackaged;
+    public static bool IsSupported => !RuntimeHelper.IsPackagedContext;
 
     /// <summary>功能是否已开启（设置项）。</summary>
     public static bool IsEnabled => AppSettings.GetBool(EnabledSettingKey, false);

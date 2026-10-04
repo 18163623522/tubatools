@@ -234,7 +234,7 @@ public sealed partial class SettingsPage : Page, ILocalizablePage
         InitSearchIndexToggle();
         InitTelemetryToggle();
 
-        if (RuntimeHelper.IsMsixPackaged)
+        if (RuntimeHelper.IsPackagedContext)
         {
             SettingsCommunityCard.Visibility = Visibility.Collapsed;
             SettingsCommunitySubmitCard.Visibility = Visibility.Collapsed;
@@ -622,7 +622,7 @@ public sealed partial class SettingsPage : Page, ILocalizablePage
 
     private void InitUpdateSection()
     {
-        if (RuntimeHelper.IsMsixPackaged || RuntimeHelper.IsLiteBuild)
+        if (RuntimeHelper.IsPackagedContext || RuntimeHelper.IsLiteBuild)
         {
             SettingsUpdateCard.Visibility = Visibility.Collapsed;
             SettingsToolsBundleCard.Visibility = Visibility.Visible;
@@ -1228,7 +1228,7 @@ public sealed partial class SettingsPage : Page, ILocalizablePage
     private void InitActiveInterceptToggle()
     {
         // MSIX 沙箱下不支持主动拦截后端，隐藏相关卡片
-        if (RuntimeHelper.IsMsixPackaged)
+        if (RuntimeHelper.IsPackagedContext)
         {
             if (SettingsActiveInterceptCard is not null)
                 SettingsActiveInterceptCard.Visibility = Visibility.Collapsed;

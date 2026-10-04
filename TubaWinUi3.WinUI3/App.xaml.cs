@@ -10,6 +10,7 @@ using TubaWinUi3.Services.ActiveIntercept;
 using TubaWinUi3.Services.Agent;
 using TubaWinUi3.Services.Ai;
 using TubaWinUi3.Services.Telemetry;
+using TubaWinUi3.ShellIntegration;
 using TubaWinUi3.Models;
 namespace TubaWinUi3;
 
@@ -65,7 +66,7 @@ public partial class App : Application
         UnhandledException += OnWinUIUnhandledException;
     }
 
-    private static bool IsRunningAsAdmin()
+    internal static bool IsRunningAsAdmin()
     {
         using var identity = WindowsIdentity.GetCurrent();
         var principal = new WindowsPrincipal(identity);
@@ -90,6 +91,92 @@ public partial class App : Application
         }
         catch
         {
+        }
+    }
+
+    /// <summary>
+    /// 「以管理员身份重新启动」按钮的提权重启（按需提权，不叠加原命令行参数）。
+    /// - 非打包：直接 ShellExecute runas（用户取消 UAC 时同步抛异常，返回失败）；
+    /// - 打包（MSIX）：打包进程无法直接 ShellExecute runas（ERROR_NOT_SUPPORTED 0x32），
+    ///   改走 PowerShell 载体的 Start-Process -Verb RunAs（仓库既有实测写法）。提权进程会丢失
+    ///   包身份，因此同时传 --msix-admin-session（命令行）与 TUBA_MSIX_LOCALSTATE（数据根），
+    ///   由 RuntimeHelper 恢复打包语义。本方法同步等待 UAC 结果（最长 90s），应在后台线程调用。
+    /// </summary>
+    internal static bool TryRelaunchElevated(IReadOnlyList<string> extraArgs, out string detail)
+    {
+        detail = string.Empty;
+        var exePath = Process.GetCurrentProcess().MainModule?.FileName;
+        if (string.IsNullOrWhiteSpace(exePath))
+        {
+            detail = "无法定位程序自身路径。";
+            return false;
+        }
+
+        if (!RuntimeHelper.IsMsixPackaged)
+        {
+            try
+            {
+                var arguments = string.Join(" ", extraArgs.Select(a => a.Contains(' ') ? $"\"{a}\"" : a));
+                Process.Start(new ProcessStartInfo(exePath)
+                {
+                    Arguments = arguments,
+                    Verb = "runas",
+                    UseShellExecute = true
+                });
+                return true;
+            }
+            catch (Exception ex)
+            {
+                detail = ex.Message;
+                return false;
+            }
+        }
+
+        try
+        {
+            var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            var alias = Path.Combine(localAppData, "Microsoft", "WindowsApps", FileLockShellMenuContract.ExecutionAlias);
+            var target = File.Exists(alias) ? alias : Path.Combine(AppContext.BaseDirectory, "TubaWinUi3.exe");
+            if (!File.Exists(target))
+            {
+                detail = "找不到可启动的程序（执行别名与包内 exe 均不可用）。";
+                return false;
+            }
+
+            var arguments = new List<string>(extraArgs) { FileLockShellMenuContract.MsixAdminSessionArg };
+            var script = FileLockShellMenuContract.BuildElevatedRelaunchScript(
+                target, RuntimeHelper.GetLocalAppDataRoot(), arguments);
+
+            var psi = new ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                Arguments = $"-NoProfile -NonInteractive -WindowStyle Hidden -EncodedCommand {FileLockShellMenuContract.EncodePowerShellCommand(script)}",
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            using var process = Process.Start(psi);
+            if (process is null)
+            {
+                detail = "PowerShell 载体启动失败。";
+                return false;
+            }
+
+            if (!process.WaitForExit(90000))
+            {
+                try { process.Kill(true); } catch { }
+                detail = "等待提权结果超时。";
+                return false;
+            }
+
+            if (process.ExitCode == 0) return true;
+
+            detail = "提权请求未成功（可能取消了 UAC，或系统拒绝了请求）。商店（MSIX）版受系统限制，必要时可改用便携版以管理员身份运行。";
+            return false;
+        }
+        catch (Exception ex)
+        {
+            detail = ex.Message;
+            return false;
         }
     }
 
@@ -213,7 +300,7 @@ public partial class App : Application
             return;
         }
 
-        if (!RuntimeHelper.IsMsixPackaged && !IsRunningAsAdmin()
+        if (!RuntimeHelper.IsPackagedContext && !IsRunningAsAdmin()
             && Environment.GetEnvironmentVariable("TUBA_SCREENSHOT_NOELEVATE") != "1")
         {
             ElevateAndRestart();
@@ -272,6 +359,15 @@ public partial class App : Application
         {
             var builtinId = cmdLine[openBuiltinIndex + 1];
             _window.NavigateToToolPage(typeof(Pages.BuiltinToolsPage), builtinId);
+        }
+
+        // 右键菜单「检测文件占用」：--file-lock <路径> 直达工具页，预填路径并自动扫描一次。
+        // 打包版新版菜单经执行别名启动（保留包身份）；便携版经典菜单直接启动本程序。
+        // 放在 --open-builtin 之后：两者同时出现时以更具体的 --file-lock 为准。
+        var fileLockIndex = Array.FindIndex(cmdLine, a => string.Equals(a, FileLockShellMenuContract.FileLockArg, StringComparison.OrdinalIgnoreCase));
+        if (fileLockIndex >= 0 && fileLockIndex + 1 < cmdLine.Length && !string.IsNullOrWhiteSpace(cmdLine[fileLockIndex + 1]))
+        {
+            _window.NavigateToToolPage(typeof(Pages.FileLockPage), cmdLine[fileLockIndex + 1]);
         }
 
         _ = RunStartupSequenceAsync();
@@ -430,7 +526,7 @@ public partial class App : Application
     {
         // MSIX 下包身份解析失败会回滚到共享 %LocalAppData%（非打包路径）：
         // 工具根/数据目录将指向旧安装版位置，可能启动非打包路径的程序，输出诊断日志
-        if (RuntimeHelper.IsMsixPackaged && RuntimeHelper.LocalAppDataRootUsedFallback)
+        if (RuntimeHelper.IsPackagedContext && RuntimeHelper.LocalAppDataRootUsedFallback)
         {
             System.Diagnostics.Debug.WriteLine("[Startup] 警告：MSIX 包身份路径解析失败，数据根已回滚到共享 %LocalAppData%，工具根可能指向非打包路径");
         }
@@ -522,7 +618,7 @@ public partial class App : Application
                 AppSettings.Set("SetupCompleted", true);
         }
 
-        if (RuntimeHelper.IsMsixPackaged)
+        if (RuntimeHelper.IsPackagedContext)
         {
             if (!ToolsBundleService.IsToolsBundleReady())
             {
@@ -540,7 +636,7 @@ public partial class App : Application
             }
         }
 
-        if (!RuntimeHelper.IsMsixPackaged)
+        if (!RuntimeHelper.IsPackagedContext)
         {
             // 更新检查延后 10s 发起，避开启动窗口期的磁盘/网络竞争
             _ = DelayThenRunAsync(TimeSpan.FromSeconds(10), CheckForToolUpdatesSilentAsync);

@@ -42,6 +42,10 @@
 .PARAMETER NoLaunch
     Register only; do not start the app.
 
+.PARAMETER RebuildShellExt
+    Rebuild the NativeAOT shell-extension DLL (Win11 context menu handler) into the package root,
+    even if a previous one is present.
+
 .EXAMPLE
     .\run-msix.ps1                 # Debug: build → register → launch packaged app
     .\run-msix.ps1 -NoBuild        # fastest iteration on existing output
@@ -56,7 +60,8 @@ param(
     [switch]$NoBuild,
     [switch]$SkipSeedTools,
     [switch]$ForceSeedTools,
-    [switch]$NoLaunch
+    [switch]$NoLaunch,
+    [switch]$RebuildShellExt
 )
 
 $ErrorActionPreference = 'Stop'
@@ -122,11 +127,25 @@ if (-not $pri) {
     Write-Host '  WARNING: no .pri found in output — packaged resource loading may fail' -ForegroundColor Yellow
 }
 
+# ── 3.5 Shell extension (Win11 新版右键菜单处理程序, NativeAOT) ──
+# 包清单以 com:SurrogateServer 声明该 DLL；dev 注册是原地注册 bin 目录，所以 DLL 必须
+# 在包根（= 构建输出目录）。缺失或 -RebuildShellExt 时调用仓库根脚本构建。
+$shellExtDll = Join-Path $OutRoot 'TubaWinUi3.ShellExtension.dll'
+if ($RebuildShellExt -or -not (Test-Path -LiteralPath $shellExtDll)) {
+    Write-Host '  Building shell extension DLL (NativeAOT)...' -ForegroundColor Yellow
+    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $ProjectDir 'build-shell-ext-aot.ps1') -Rid $rid -OutputDir $OutRoot -Configuration $Config
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $shellExtDll)) {
+        throw 'Shell extension build failed. NativeAOT 需要 MSVC 链接器（VS2022 Build Tools），详见 build-shell-ext-aot.ps1 输出。'
+    }
+} else {
+    Write-Host '  Shell extension DLL present (use -RebuildShellExt to rebuild)' -ForegroundColor Gray
+}
+
 # ── 4. Write dev AppxManifest.xml into the package root ───────
 Write-Host '  Writing AppxManifest.xml (dev identity)...' -ForegroundColor Yellow
 $lines = @(
     '<?xml version="1.0" encoding="utf-8"?>'
-    '<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10" xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10" xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities" IgnorableNamespaces="uap rescap">'
+    '<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10" xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10" xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3" xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities" xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10" xmlns:desktop4="http://schemas.microsoft.com/appx/manifest/desktop/windows10/4" xmlns:desktop5="http://schemas.microsoft.com/appx/manifest/desktop/windows10/5" xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10" IgnorableNamespaces="uap uap3 rescap desktop desktop4 desktop5 com">'
     "  <Identity Name=`"$DevPkgName`" Publisher=`"$DevPublisher`" Version=`"$ver`" ProcessorArchitecture=`"$Arch`" />"
     '  <Properties>'
     '    <DisplayName>图吧工具箱CE (Dev)</DisplayName>'
@@ -146,6 +165,30 @@ $lines = @(
     '        <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" />'
     '        <uap:SplashScreen Image="Assets\SplashScreen.png" />'
     '      </uap:VisualElements>'
+    '      <Extensions>'
+    '        <uap3:Extension Category="windows.appExecutionAlias" Executable="TubaWinUi3.exe" EntryPoint="Windows.FullTrustApplication">'
+    '          <uap3:AppExecutionAlias>'
+    '            <desktop:ExecutionAlias Alias="TubaWinUi3.exe" />'
+    '          </uap3:AppExecutionAlias>'
+    '        </uap3:Extension>'
+    '        <desktop4:Extension Category="windows.fileExplorerContextMenus">'
+    '          <desktop4:FileExplorerContextMenus>'
+    '            <desktop4:ItemType Type="*">'
+    '              <desktop4:Verb Id="TubaFileLocksmith" Clsid="9C1D4A7E-2B63-4E5F-A08C-6D3B9F1E7A52" />'
+    '            </desktop4:ItemType>'
+    '            <desktop5:ItemType Type="Directory">'
+    '              <desktop5:Verb Id="TubaFileLocksmith" Clsid="9C1D4A7E-2B63-4E5F-A08C-6D3B9F1E7A52" />'
+    '            </desktop5:ItemType>'
+    '          </desktop4:FileExplorerContextMenus>'
+    '        </desktop4:Extension>'
+    '        <com:Extension Category="windows.comServer">'
+    '          <com:ComServer>'
+    '            <com:SurrogateServer DisplayName="TubaWinUi3 File Locksmith">'
+    '              <com:Class Id="9C1D4A7E-2B63-4E5F-A08C-6D3B9F1E7A52" Path="TubaWinUi3.ShellExtension.dll" ThreadingModel="STA" />'
+    '            </com:SurrogateServer>'
+    '          </com:ComServer>'
+    '        </com:Extension>'
+    '      </Extensions>'
     '    </Application>'
     '  </Applications>'
     '  <Capabilities>'

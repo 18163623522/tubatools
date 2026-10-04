@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <!-- memory 内存 -->
+  <path fill="none" d="M3.5 8.5C3.5 7.67 4.17 7 5 7H19C19.83 7 20.5 7.67 20.5 8.5V14.5C20.5 15.33 19.83 16 19 16H5C4.17 16 3.5 15.33 3.5 14.5V8.5Z" stroke="#5C2E91" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path fill="none" d="M6.5 16V18.5M9.5 16V18.5M12.5 16V18.5M15.5 16V18.5M18.5 16V18.5" stroke="#5C2E91" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M6 9.5H10V12H6V9.5Z" fill="#B07CDB"/>
+  <path d="M12 9.5H18V12H12V9.5Z" fill="#B07CDB"/>
+</svg>

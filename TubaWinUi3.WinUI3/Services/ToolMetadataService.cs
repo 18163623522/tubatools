@@ -526,7 +526,7 @@ public static class ToolMetadataService
 
     public static string GetWritableMetadataDir()
     {
-        if (!RuntimeHelper.IsMsixPackaged)
+        if (!RuntimeHelper.IsPackagedContext)
             return FindRoot("Metadata");
 
         var writableDir = Path.Combine(

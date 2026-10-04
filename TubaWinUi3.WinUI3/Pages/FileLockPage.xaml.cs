@@ -2,8 +2,10 @@ using System.Diagnostics;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Navigation;
 using TubaWinUi3.Services;
 using TubaWinUi3.Services.FileLock;
+using TubaWinUi3.ShellIntegration;
 using Windows.UI;
 
 namespace TubaWinUi3.Pages;
@@ -11,7 +13,8 @@ namespace TubaWinUi3.Pages;
 /// <summary>
 /// 「文件占用查看」（对标 PowerToys File Locksmith）。
 /// 输入/选择目标路径 → 扫描持有句柄的进程 → 展开看具体持有的路径，并可结束占用进程（二次确认）。
-/// 页面**不自动扫描**：句柄枚举有秒级开销，且受保护进程会如实计入跳过数，自动跑容易让人误解。
+/// 页面默认**不自动扫描**：句柄枚举有秒级开销，且受保护进程会如实计入跳过数，自动跑容易让人误解；
+/// 仅当经 --file-lock &lt;路径&gt;（资源管理器右键菜单）带参打开时，预填路径并自动扫描一次。
 /// </summary>
 public sealed partial class FileLockPage : Page, ILocalizablePage
 {
@@ -37,6 +40,12 @@ public sealed partial class FileLockPage : Page, ILocalizablePage
     private Grid? _firstRowGrid;
     private bool _headerWidthSynced;
 
+    /// <summary>--file-lock 带入、等待 Loaded 后预填并自动扫描的路径。</summary>
+    private string? _pendingAutoScanPath;
+    private bool _promptChecked;
+    private bool _shellMenuToggleBusy;
+    private bool _adminRestartBusy;
+
     public FileLockPage()
     {
         InitializeComponent();
@@ -44,6 +53,10 @@ public sealed partial class FileLockPage : Page, ILocalizablePage
         HeaderBorder.Background = new SolidColorBrush(ThemeColors.HeaderBg);
         ListBorder.BorderBrush = new SolidColorBrush(ThemeColors.BorderColor);
         RefreshActionHeaderMirror();
+
+        Loaded += OnPageLoaded;
+        UpdateAdminBarTexts();
+        InitShellMenuSection();
 
         // 页面销毁时取消在跑的扫描，避免结果回到已经不在可视树上的控件上。
         Unloaded += (_, _) =>
@@ -53,6 +66,28 @@ public sealed partial class FileLockPage : Page, ILocalizablePage
         };
     }
 
+    /// <summary>经右键菜单 --file-lock &lt;路径&gt; 打开时拿到目标路径（Loaded 后自动扫描一次）。</summary>
+    protected override void OnNavigatedTo(NavigationEventArgs e)
+    {
+        base.OnNavigatedTo(e);
+        if (e.Parameter is string path && !string.IsNullOrWhiteSpace(path))
+            _pendingAutoScanPath = path;
+    }
+
+    private async void OnPageLoaded(object sender, RoutedEventArgs e)
+    {
+        if (_pendingAutoScanPath is { } path)
+        {
+            _pendingAutoScanPath = null;
+            PathBox.Text = path;
+            _ = RunScanAsync();   // 不 await：让首问弹窗不被秒级句柄枚举拖住
+        }
+
+        if (_promptChecked) return;
+        _promptChecked = true;
+        await MaybePromptShellMenuAsync();
+    }
+
     /// <summary>语言切换后重算自绘文案（打了 Uid 的控件由 WinUI3Localizer 自动刷新）。</summary>
     public void ApplyLocalization()
     {
@@ -60,6 +95,195 @@ public sealed partial class FileLockPage : Page, ILocalizablePage
         // 失败提示 / 「没有占用」提示 / 摘要三种分支的本地化。
         RefreshActionHeaderMirror();
         if (_lastResult is { } result) RenderResult(result);
+
+        UpdateAdminBarTexts();
+        RefreshShellMenuTexts();
+    }
+
+    // ---------- 右键菜单集成 ----------
+
+    private void InitShellMenuSection()
+    {
+        ShellMenuToggle.OnContent = L("FileLock_MenuToggleOn", "已开启");
+        ShellMenuToggle.OffContent = L("FileLock_MenuToggleOff", "未开启");
+        ShellMenuToggle.IsEnabled = FileLockShellMenuService.IsSupported;
+        _shellMenuToggleBusy = true;
+        ShellMenuToggle.IsOn = FileLockShellMenuService.IsEnabled();
+        _shellMenuToggleBusy = false;
+        RefreshShellMenuTexts();
+    }
+
+    /// <summary>本页两种模式的说明与语言同步（已开启时把当前语言的菜单文案写给注册表/标记文件）。</summary>
+    private void RefreshShellMenuTexts()
+    {
+        ShellMenuDescText.Text = FileLockShellMenuService.Mode switch
+        {
+            FileLockShellMenuContract.MenuMode.ModernMenu =>
+                L("FileLock_MenuDescModern", "Windows 11 新版右键菜单：在资源管理器中右键文件或文件夹即可直接检测其占用。"),
+            FileLockShellMenuContract.MenuMode.ClassicRegistry =>
+                L("FileLock_MenuDescClassic", "经典右键菜单：Windows 11 上位于「显示更多选项」，开启后立即生效。"),
+            _ => L("FileLock_MenuDescUnsupported", "微软商店（MSIX）版的新版右键菜单需要 Windows 11，当前系统不支持。"),
+        };
+
+        if (!FileLockShellMenuService.IsEnabled()) return;
+
+        // 语言切换后重写菜单文案（标记文件第一/二行、注册表 MUIVerb）；失败静默保留旧语言。
+        FileLockShellMenuService.Enable(
+            L("FileLock_ContextVerb", "用图吧工具箱检测文件占用"),
+            L("FileLock_ContextToolTip", "查看是哪个进程占用了此文件"));
+    }
+
+    private void ShellMenuToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_shellMenuToggleBusy) return;
+        ApplyShellMenuToggle(ShellMenuToggle.IsOn);
+    }
+
+    private void ApplyShellMenuToggle(bool enabled)
+    {
+        _shellMenuToggleBusy = true;
+        ShellMenuToggle.IsEnabled = false;
+        try
+        {
+            var error = enabled
+                ? FileLockShellMenuService.Enable(
+                    L("FileLock_ContextVerb", "用图吧工具箱检测文件占用"),
+                    L("FileLock_ContextToolTip", "查看是哪个进程占用了此文件"))
+                : FileLockShellMenuService.Disable();
+
+            if (error is not null)
+            {
+                ShowError(string.Format(
+                    enabled
+                        ? L("FileLock_MenuEnableFailed", "添加右键菜单失败：{0}")
+                        : L("FileLock_MenuDisableFailed", "移除右键菜单失败：{0}"),
+                    error));
+                ShellMenuToggle.IsOn = !enabled;   // 失败回滚（busy 标志吞掉这次 Toggled）
+            }
+        }
+        finally
+        {
+            _shellMenuToggleBusy = false;
+            ShellMenuToggle.IsEnabled = FileLockShellMenuService.IsSupported;
+        }
+    }
+
+    /// <summary>首次打开本工具页询问一次是否加入右键菜单（先写标记防重复，仿 GameMonitorBackendService）。</summary>
+    private async Task MaybePromptShellMenuAsync()
+    {
+        if (AppSettings.GetBool("FileLockShellMenuPrompted", false)) return;
+        AppSettings.Set("FileLockShellMenuPrompted", true);
+
+        if (!FileLockShellMenuService.IsSupported) return;
+        if (FileLockShellMenuService.IsEnabled()) return;   // 旧版本/其他入口已开启：不再打扰
+
+        var dialog = new ContentDialog
+        {
+            Title = L("FileLock_MenuPromptTitle", "添加右键菜单？"),
+            Content = L("FileLock_MenuPromptBody", "要在资源管理器的右键菜单中加入「用图吧工具箱检测文件占用」吗？之后可在此页面随时开关。"),
+            PrimaryButtonText = L("FileLock_MenuPromptEnable", "开启"),
+            CloseButtonText = L("FileLock_MenuPromptSkip", "暂不开启"),
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = XamlRoot,
+            RequestedTheme = ThemeService.CurrentElementTheme
+        };
+        var confirmed = false;
+        dialog.PrimaryButtonClick += (_, _) => confirmed = true;
+
+        if (!await ContentDialogGuard.ShowWhenIdleAsync(dialog, TimeSpan.FromSeconds(10))) return;
+        if (!confirmed || !_isPageAlive) return;
+
+        _shellMenuToggleBusy = true;
+        ShellMenuToggle.IsOn = true;
+        _shellMenuToggleBusy = false;
+        ApplyShellMenuToggle(true);
+    }
+
+    private async void RestartExplorerBtn_Click(object sender, RoutedEventArgs e)
+    {
+        RestartExplorerBtn.IsEnabled = false;
+        try
+        {
+            await Task.Run(() =>
+            {
+                try
+                {
+                    ExplorerShellService.Restart();
+                }
+                catch (Exception ex)
+                {
+                    DispatcherQueue.TryEnqueue(() => ShowError(ex.Message));
+                }
+            });
+        }
+        finally
+        {
+            if (_isPageAlive) RestartExplorerBtn.IsEnabled = true;
+        }
+    }
+
+    // ---------- 管理员提权重启 ----------
+
+    private void UpdateAdminBarTexts()
+    {
+        AdminBar.Title = L("FileLock_AdminBarTitle", "当前未以管理员身份运行");
+        AdminBar.Message = L("FileLock_AdminBarMessage", "部分受保护进程的占用可能看不到，以管理员身份重启可完整检测。");
+        AdminBar.IsOpen = !App.IsRunningAsAdmin();
+    }
+
+    /// <summary>
+    /// 以管理员身份重启并回到本工具、续扫当前路径。
+    /// 打包版经 PowerShell 载体提权（提权进程会丢失包身份，App.TryRelaunchElevated 会带上恢复标记）；
+    /// 非打包版直接 runas。成功后必须走 App.RequestExit()（保留完整收尾清理）。
+    /// </summary>
+    private async void RestartAsAdminBtn_Click(object sender, RoutedEventArgs e)
+    {
+        if (_adminRestartBusy) return;
+        _adminRestartBusy = true;
+        RestartAsAdminBtn.IsEnabled = false;
+        RestartAsAdminRing.Visibility = Visibility.Visible;
+        RestartAsAdminRing.IsActive = true;
+
+        try
+        {
+            var arguments = new List<string>();
+            var path = PathBox.Text.Trim();
+            if (path.Length > 0)
+            {
+                arguments.Add(FileLockShellMenuContract.FileLockArg);
+                arguments.Add(path);
+            }
+
+            var ok = false;
+            var detail = string.Empty;
+            await Task.Run(() => { ok = App.TryRelaunchElevated(arguments, out detail); });
+
+            if (ok)
+            {
+                App.RequestExit();
+                return;
+            }
+
+            var dialog = new ContentDialog
+            {
+                Title = L("FileLock_AdminFailedTitle", "无法提权重启"),
+                Content = string.Format(L("FileLock_AdminFailedMessage", "提权请求未成功：{0}"), detail),
+                CloseButtonText = L("FileLock_Close", "关闭"),
+                XamlRoot = XamlRoot,
+                RequestedTheme = ThemeService.CurrentElementTheme
+            };
+            await ContentDialogGuard.ShowWhenIdleAsync(dialog, TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            if (_isPageAlive)
+            {
+                _adminRestartBusy = false;
+                RestartAsAdminBtn.IsEnabled = true;
+                RestartAsAdminRing.IsActive = false;
+                RestartAsAdminRing.Visibility = Visibility.Collapsed;
+            }
+        }
     }
 
     /// <summary>

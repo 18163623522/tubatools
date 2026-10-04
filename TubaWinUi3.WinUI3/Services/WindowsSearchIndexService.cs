@@ -454,11 +454,12 @@ internal static class WindowsSearchIndexService
     }
 
     /// <summary>
-    /// 按工具 Id 缓存 .ico；已存在直接复用。
+    /// 按工具 Id 生成/复用 .ico（「文件占用查看」右键菜单的菜单图标也走这里）；
+    /// 已存在直接复用。
     /// 文件名带版本后缀：图标从单色字形换成彩色矢量后，老版本留下的 <c>&lt;id&gt;.ico</c>
     /// 必须重新生成，否则升级用户的桌面图标永远是旧的。
     /// </summary>
-    private static string? EnsureBuiltinIcon(IBuiltinTool tool)
+    internal static string? EnsureBuiltinIcon(IBuiltinTool tool)
     {
         try
         {

@@ -174,7 +174,7 @@ public sealed partial class MainWindow : Window
         NavFrame.Navigated += NavFrame_Navigated;
         NavView.ItemInvoked += NavView_ItemInvoked;
 
-        if (RuntimeHelper.IsMsixPackaged)
+        if (RuntimeHelper.IsPackagedContext)
         {
             NavView.MenuItems.Remove(CommunityNavItem);
         }
@@ -703,7 +703,7 @@ public sealed partial class MainWindow : Window
                     NavFrame.Navigate(typeof(BuiltinToolsPage));
                     break;
                 case "community":
-                    if (RuntimeHelper.IsMsixPackaged) break;
+                    if (RuntimeHelper.IsPackagedContext) break;
                     NavFrame.Navigate(typeof(CommunityToolsPage));
                     break;
 

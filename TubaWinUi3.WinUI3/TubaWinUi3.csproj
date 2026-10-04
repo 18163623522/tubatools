@@ -285,4 +285,28 @@
       </ContentWithTargetPath>
     </ItemGroup>
   </Target>
+
+  <!--
+    「文件占用查看」Win11 新版右键菜单处理程序（TubaWinUI3.ShellExtension）NativeAOT 发布：
+    仅 MSIX 打包需要（build-msix-store.ps1 / build-store.ps1 传 -p:IncludeShellExtension=true），
+    包清单以 com:SurrogateServer 声明该 DLL；便携发布不产出（不进 zip）。
+    注意：条件不能复用 ExcludeToolsFromPublish —— 商店 MSIX 构建该值为 true 但必须包含本 DLL。
+  -->
+  <Target Name="PublishShellExtension" BeforeTargets="GetCopyToPublishDirectoryItems" Condition="'$(IncludeShellExtension)' == 'true'">
+    <PropertyGroup>
+      <_ShellExtOutDir>$(MSBuildProjectDirectory)\artifacts\shell-ext-aot\$(RuntimeIdentifier)</_ShellExtOutDir>
+    </PropertyGroup>
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\build-shell-ext-aot.ps1&quot; -Rid $(RuntimeIdentifier) -OutputDir &quot;$(_ShellExtOutDir)&quot; -Configuration $(Configuration)" />
+    <ItemGroup>
+      <_ShellExtDll Include="$(_ShellExtOutDir)\TubaWinUi3.ShellExtension.dll" />
+    </ItemGroup>
+    <AssignTargetPath Files="@(_ShellExtDll)" RootFolder="$(_ShellExtOutDir)">
+      <Output TaskParameter="AssignedFiles" ItemName="ContentWithTargetPath" />
+    </AssignTargetPath>
+    <ItemGroup>
+      <ContentWithTargetPath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </ContentWithTargetPath>
+    </ItemGroup>
+  </Target>
 </Project>

@@ -153,7 +153,7 @@ function Write-CleanManifest {
 
     $lines = @(
         '<?xml version="1.0" encoding="utf-8"?>'
-        '<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10" xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10" xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities" IgnorableNamespaces="uap rescap">'
+        '<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10" xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10" xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3" xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities" xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10" xmlns:desktop4="http://schemas.microsoft.com/appx/manifest/desktop/windows10/4" xmlns:desktop5="http://schemas.microsoft.com/appx/manifest/desktop/windows10/5" xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10" IgnorableNamespaces="uap uap3 rescap desktop desktop4 desktop5 com">'
         "  <Identity Name=`"$PackageName`" Publisher=`"$Publisher`" Version=`"$Version`" ProcessorArchitecture=`"$Arch`" />"
         '  <Properties>'
         "    <DisplayName>$DisplayName</DisplayName>"
@@ -173,6 +173,30 @@ function Write-CleanManifest {
         '        <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" />'
         '        <uap:SplashScreen Image="Assets\SplashScreen.png" />'
         '      </uap:VisualElements>'
+        '      <Extensions>'
+        '        <uap3:Extension Category="windows.appExecutionAlias" Executable="TubaWinUi3.exe" EntryPoint="Windows.FullTrustApplication">'
+        '          <uap3:AppExecutionAlias>'
+        '            <desktop:ExecutionAlias Alias="TubaWinUi3.exe" />'
+        '          </uap3:AppExecutionAlias>'
+        '        </uap3:Extension>'
+        '        <desktop4:Extension Category="windows.fileExplorerContextMenus">'
+        '          <desktop4:FileExplorerContextMenus>'
+        '            <desktop4:ItemType Type="*">'
+        '              <desktop4:Verb Id="TubaFileLocksmith" Clsid="9C1D4A7E-2B63-4E5F-A08C-6D3B9F1E7A52" />'
+        '            </desktop4:ItemType>'
+        '            <desktop5:ItemType Type="Directory">'
+        '              <desktop5:Verb Id="TubaFileLocksmith" Clsid="9C1D4A7E-2B63-4E5F-A08C-6D3B9F1E7A52" />'
+        '            </desktop5:ItemType>'
+        '          </desktop4:FileExplorerContextMenus>'
+        '        </desktop4:Extension>'
+        '        <com:Extension Category="windows.comServer">'
+        '          <com:ComServer>'
+        '            <com:SurrogateServer DisplayName="TubaWinUi3 File Locksmith">'
+        '              <com:Class Id="9C1D4A7E-2B63-4E5F-A08C-6D3B9F1E7A52" Path="TubaWinUi3.ShellExtension.dll" ThreadingModel="STA" />'
+        '            </com:SurrogateServer>'
+        '          </com:ComServer>'
+        '        </com:Extension>'
+        '      </Extensions>'
         '    </Application>'
         '  </Applications>'
         '  <Capabilities>'
@@ -211,6 +235,7 @@ function Build-ArchPackage {
         -p:PublishTrimmed=false `
         -p:PublishReadyToRun=false `
         -p:ExcludeToolsFromPublish=true `
+        -p:IncludeShellExtension=true `
         -o $archDir 2>&1 |
         Select-Object -Last 3 |
         ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
@@ -223,6 +248,14 @@ function Build-ArchPackage {
     $exePath = Join-Path $archDir 'TubaWinUi3.exe'
     if (-not (Test-Path -LiteralPath $exePath)) {
         Write-Host "  ERROR: TubaWinUi3.exe not found in publish output" -ForegroundColor Red
+        return $null
+    }
+
+    # 「文件占用查看」Win11 新版右键菜单处理程序：清单 com:SurrogateServer 引用的原生 DLL，
+    # 缺失时包内菜单会静默失效，必须在这里拦下。
+    $shellExtDll = Join-Path $archDir 'TubaWinUi3.ShellExtension.dll'
+    if (-not (Test-Path -LiteralPath $shellExtDll)) {
+        Write-Host '  ERROR: TubaWinUi3.ShellExtension.dll not found in publish output (右键菜单处理程序缺失)' -ForegroundColor Red
         return $null
     }
 

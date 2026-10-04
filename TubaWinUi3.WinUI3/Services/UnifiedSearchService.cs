@@ -45,7 +45,7 @@ public static class UnifiedSearchService
 
         SearchExternalTools(normalized, results);
         SearchBuiltinTools(normalized, results);
-        if (!RuntimeHelper.IsMsixPackaged)
+        if (!RuntimeHelper.IsPackagedContext)
             SearchCommunityTools(normalized, results);
         SearchSettings(normalized, results);
 
