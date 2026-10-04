@@ -34,6 +34,15 @@
 - 本文件及仓库中的许可证说明仅用于项目管理与合规提示，不构成法律意见。
 - 如需商业分发，或对具体第三方工具/资源的权利状态存在疑问，请咨询相应权利人或专业法律顾问。
 
+## 6. 移植自第三方开源项目的实现
+
+以下功能为参照上游开源项目**重新实现**的托管代码（未搬运其源代码文件），在此保留署名：
+
+- **环境变量**（内置工具 `environment-variables`，`TubaWinUi3.WinUI3/Services/EnvVars/`）
+  参照 Microsoft **PowerToys** 的 Environment Variables 模块（`src/modules/EnvironmentVariables/`）实现，
+  MIT License，Copyright (c) Microsoft Corporation。
+  上游项目：https://github.com/microsoft/PowerToys
+
 ---
 
 # Third-Party Notice (English)
@@ -71,3 +80,13 @@ This file clarifies rights boundaries for third-party content in this repository
 
 - This file and related repository notices are informational and are not legal advice.
 - For commercial redistribution or rights uncertainty regarding specific third-party tools/resources, consult the relevant rightsholders or professional legal counsel.
+
+## 6. Implementations Ported from Third-Party Open-Source Projects
+
+The following features are managed-code **re-implementations** modelled on upstream open-source projects
+(no source files were copied from them). Attribution is kept here:
+
+- **Environment Variables** (built-in tool `environment-variables`, `TubaWinUi3.WinUI3/Services/EnvVars/`)
+  Modelled on the Environment Variables module of Microsoft **PowerToys** (`src/modules/EnvironmentVariables/`),
+  MIT License, Copyright (c) Microsoft Corporation.
+  Upstream: https://github.com/microsoft/PowerToys

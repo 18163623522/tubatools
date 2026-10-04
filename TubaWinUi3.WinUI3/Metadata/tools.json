@@ -1757,6 +1757,13 @@
       "categories": [
         "其他工具"
       ]
+    },
+    {
+      "match": "环境变量",
+      "builtin": "environment-variables",
+      "categories": [
+        "其他工具"
+      ]
     }
   ]
 }
