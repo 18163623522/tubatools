@@ -20,9 +20,9 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -35,13 +35,16 @@ import com.tubawinui3.remote.data.ConnectLink
 import com.tubawinui3.remote.data.ConnectTarget
 import com.tubawinui3.remote.data.DEFAULT_PORT
 
-/** 未连接时弹出的连接面板：扫码 / IP + 配对码。不可手动关闭。 */
+/**
+ * 「添加电脑 / 输入配对码」底部面板：扫码或手动 IP + 配对码。
+ * [initial] 不为空时预填地址（列表里点未配对的电脑 / 配对失效时用）。
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ConnectSheet(vm: RemoteViewModel) {
-    val state = rememberModalBottomSheetState(skipPartiallyExpanded = true, confirmValueChange = { false })
-    var address by rememberSaveable { mutableStateOf(vm.lastTarget?.let { "${it.host}:${it.port}" } ?: "") }
-    var code by rememberSaveable { mutableStateOf("") }
+fun AddPcSheet(vm: RemoteViewModel, initial: ConnectTarget?, onDismiss: () -> Unit) {
+    val state = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var address by rememberSaveable(initial) { mutableStateOf(initial?.let { "${it.host}:${it.port}" } ?: "") }
+    var code by rememberSaveable(initial) { mutableStateOf("") }
 
     val scanner = rememberLauncherForActivityResult(ScanContract()) { result ->
         val text = result.contents ?: return@rememberLauncherForActivityResult
@@ -51,12 +54,17 @@ fun ConnectSheet(vm: RemoteViewModel) {
         else address = "${target.host}:${target.port}"
     }
 
-    ModalBottomSheet(onDismissRequest = {}, sheetState = state) {
+    // 配对成功 → 自动收起面板回到连接好的界面
+    LaunchedEffect(vm.connected) {
+        if (vm.connected) onDismiss()
+    }
+
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = state) {
         Column(
             Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 24.dp).navigationBarsPadding(),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("连接电脑", style = MaterialTheme.typography.headlineSmall)
+            Text("添加电脑", style = MaterialTheme.typography.headlineSmall)
             Text(
                 "在电脑上打开 图吧工具箱 → 内置工具 → 连接手机，并确保手机与电脑在同一局域网。",
                 style = MaterialTheme.typography.bodyMedium,

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Imaging;
@@ -5,7 +6,11 @@ using TubaWinUi3.Pages;
 
 namespace TubaWinUi3.Services;
 
-/// <summary>「连接手机」内置工具：开启局域网服务，手机端扫码 / 配对码 / IP 连接后可监控、截图、执行 PowerShell、winget 装软件、互传消息文件。</summary>
+/// <summary>
+/// 「连接手机」内置工具：开启局域网服务，手机端扫码 / 配对码 / IP 连接后可监控、截图、
+/// 执行 PowerShell、winget 装软件、互传消息文件。主页面只保留服务与配对信息，
+/// 聊天与文件、手机任务都收进独立弹窗；接收位置可手动选择。
+/// </summary>
 public sealed class PhoneLinkTool : IBuiltinTool
 {
     public string Id => "phone-link";
@@ -44,11 +49,30 @@ public sealed class PhoneLinkTool : IBuiltinTool
         var refresh = new Button { Content = "刷新配对码" };
         var revoke = new Button { Content = "断开所有手机" };
 
-        var chatList = new ListView { Height = 220, SelectionMode = ListViewSelectionMode.None };
-        var input = new TextBox { PlaceholderText = "发送给手机的文字…", HorizontalAlignment = HorizontalAlignment.Stretch };
-        var send = new Button { Content = "发送" };
-        var sendFile = new Button { Content = "发送文件…" };
-        var openInbox = new Button { Content = "打开接收文件夹" };
+        var chatButton = new Button { Content = "聊天与文件…" };
+        var jobsButton = new Button { Content = "手机任务…" };
+        var receivePathText = new TextBlock
+        {
+            Opacity = 0.8,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        var changeReceive = new Button { Content = "更改…" };
+        var resetReceive = new Button { Content = "恢复默认", Visibility = Visibility.Collapsed };
+        var openInbox = new Button { Content = "打开文件夹" };
+
+        var receiveRow = new Grid { ColumnSpacing = 8 };
+        receiveRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        receiveRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        receiveRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        receiveRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        Grid.SetColumn(changeReceive, 1);
+        Grid.SetColumn(resetReceive, 2);
+        Grid.SetColumn(openInbox, 3);
+        receiveRow.Children.Add(receivePathText);
+        receiveRow.Children.Add(changeReceive);
+        receiveRow.Children.Add(resetReceive);
+        receiveRow.Children.Add(openInbox);
 
         var panel = new StackPanel { Spacing = 12, Padding = new Thickness(24, 8, 24, 24) };
         panel.Children.Add(toggle);
@@ -60,19 +84,10 @@ public sealed class PhoneLinkTool : IBuiltinTool
         panel.Children.Add(addrText);
         panel.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { refresh, revoke } });
         panel.Children.Add(devices);
-        panel.Children.Add(new TextBlock { Text = "聊天 / 文件传输", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 12, 0, 0) });
-        panel.Children.Add(chatList);
-        var sendRow = new Grid { ColumnSpacing = 8 };
-        sendRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        sendRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        sendRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        Grid.SetColumn(send, 1);
-        Grid.SetColumn(sendFile, 2);
-        sendRow.Children.Add(input);
-        sendRow.Children.Add(send);
-        sendRow.Children.Add(sendFile);
-        panel.Children.Add(sendRow);
-        panel.Children.Add(openInbox);
+        panel.Children.Add(new TextBlock { Text = "手机互动", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 12, 0, 0) });
+        panel.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { chatButton, jobsButton } });
+        panel.Children.Add(new TextBlock { Text = "文件接收", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 12, 0, 0) });
+        panel.Children.Add(receiveRow);
 
         var root = new ScrollViewer { Content = panel };
 
@@ -98,6 +113,20 @@ public sealed class PhoneLinkTool : IBuiltinTool
             _ = UpdateQrAsync(qr, PhoneLinkService.BuildQrPayload(ip));
         }
 
+        void RefreshReceive()
+        {
+            var path = PhoneLinkService.ReceiveDir;
+            receivePathText.Text = "接收位置：" + path;
+            ToolTipService.SetToolTip(receivePathText, path);
+            resetReceive.Visibility = PhoneLinkService.CustomReceiveDir is null ? Visibility.Collapsed : Visibility.Visible;
+        }
+
+        void RefreshJobsButton()
+        {
+            var runningJobs = PhoneLinkService.GetJobs().Count(j => j.IsRunning);
+            jobsButton.Content = runningJobs > 0 ? $"手机任务…（{runningJobs} 个进行中）" : "手机任务…";
+        }
+
         void FillIps()
         {
             ipBox.ItemsSource = PhoneLinkService.GetLocalIps();
@@ -105,27 +134,51 @@ public sealed class PhoneLinkTool : IBuiltinTool
         }
         FillIps();
 
-        void AppendMessage(PhoneChatMessage m)
+        void ShowChatDialog()
         {
-            var who = m.From == "phone" ? "手机" : "电脑";
-            var body = m.Type == "text" ? m.Text : $"[{(m.Type == "image" ? "图片" : "文件")}] {m.FileName} ({m.Size / 1024.0:F1} KB)";
-            chatList.Items.Add($"{DateTimeOffset.FromUnixTimeMilliseconds(m.Time).LocalDateTime:HH:mm:ss}  {who}：{body}");
-            chatList.ScrollIntoView(chatList.Items[^1]);
+            if (root.XamlRoot is null) return;
+            var dialog = new PhoneLinkChatDialog(root.XamlRoot);
+            _ = ContentDialogGuard.ShowWhenIdleAsync(dialog, TimeSpan.FromSeconds(10));
         }
-        foreach (var m in PhoneLinkService.GetMessages()) AppendMessage(m);
+
+        void ShowJobsDialog(string? jobId = null)
+        {
+            if (root.XamlRoot is null) return;
+            var dialog = new PhoneLinkJobsDialog(root.XamlRoot, jobId);
+            _ = ContentDialogGuard.ShowWhenIdleAsync(dialog, TimeSpan.FromSeconds(10));
+        }
+
+        async Task RunLoadedTasksAsync()
+        {
+            try
+            {
+                await MaybePromptCloseToTrayAsync();
+                var pending = PhoneLinkActivation.TryConsume();
+                if (pending is null) return;
+                if (pending.Target == "chat") ShowChatDialog();
+                else if (pending.Target == "jobs") ShowJobsDialog(pending.JobId);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[PhoneLink] 首屏任务失败：{ex.Message}");
+            }
+        }
 
         Action stateHandler = () => root.DispatcherQueue.TryEnqueue(Refresh);
-        Action<PhoneChatMessage> msgHandler = m => root.DispatcherQueue.TryEnqueue(() => AppendMessage(m));
+        Action jobsHandler = () => root.DispatcherQueue.TryEnqueue(RefreshJobsButton);
         root.Loaded += (_, _) =>
         {
             PhoneLinkService.StateChanged += stateHandler;
-            PhoneLinkService.MessageAdded += msgHandler;
+            PhoneLinkService.JobsChanged += jobsHandler;
             Refresh();
+            RefreshReceive();
+            RefreshJobsButton();
+            _ = RunLoadedTasksAsync();
         };
         root.Unloaded += (_, _) =>
         {
             PhoneLinkService.StateChanged -= stateHandler;
-            PhoneLinkService.MessageAdded -= msgHandler;
+            PhoneLinkService.JobsChanged -= jobsHandler;
         };
 
         toggle.Toggled += (_, _) =>
@@ -140,35 +193,88 @@ public sealed class PhoneLinkTool : IBuiltinTool
                 addrText.Text = "启动失败：" + ex.Message;
             }
             Refresh();
+            RefreshJobsButton();
         };
         ipBox.SelectionChanged += (_, _) => { if (PhoneLinkService.IsRunning) Refresh(); };
         refresh.Click += (_, _) => PhoneLinkService.RefreshPairCode();
         revoke.Click += (_, _) => PhoneLinkService.RevokeAll();
-        void DoSend()
+        chatButton.Click += (_, _) => ShowChatDialog();
+        jobsButton.Click += (_, _) => ShowJobsDialog();
+        changeReceive.Click += async (_, _) =>
         {
-            if (string.IsNullOrWhiteSpace(input.Text)) return;
-            PhoneLinkService.AddPcText(input.Text.Trim());
-            input.Text = "";
-        }
-        send.Click += (_, _) => DoSend();
-        input.KeyDown += (_, e) => { if (e.Key == Windows.System.VirtualKey.Enter) DoSend(); };
-        sendFile.Click += (_, _) =>
+            try
+            {
+                var folder = await Win32Dialogs.PickFolderAsync();
+                if (string.IsNullOrWhiteSpace(folder)) return;
+                PhoneLinkService.SetReceiveDir(folder);
+                RefreshReceive();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[PhoneLink] 选择接收位置失败：{ex.Message}");
+            }
+        };
+        resetReceive.Click += (_, _) =>
         {
-            foreach (var f in Win32Dialogs.PickOpenMultiple("所有文件\0*.*\0\0", "选择要发送给手机的文件"))
-                PhoneLinkService.AddPcFile(f);
+            PhoneLinkService.SetReceiveDir(null);
+            RefreshReceive();
         };
         openInbox.Click += (_, _) =>
         {
             try
             {
-                Directory.CreateDirectory(PhoneLinkService.InboxDir);
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(PhoneLinkService.InboxDir) { UseShellExecute = true });
+                var dir = PhoneLinkService.ReceiveDir;
+                Directory.CreateDirectory(dir);
+                Process.Start(new ProcessStartInfo(dir) { UseShellExecute = true });
             }
             catch { }
         };
 
         Refresh();
+        RefreshReceive();
+        RefreshJobsButton();
         return root;
+    }
+
+    /// <summary>
+    /// 首次打开本工具时询问是否允许「关闭窗口后留在系统托盘」——
+    /// 手机连接是后台服务，关窗即退出会让手机再也连不上；文案照搬设置项。
+    /// </summary>
+    private static async Task MaybePromptCloseToTrayAsync()
+    {
+        if (AppSettings.Get("PhoneLinkCloseToTrayPrompted") is not null) return;
+        if (CloseToTrayService.IsEnabled)
+        {
+            // 已经是开启状态：无需再问，直接记标记
+            AppSettings.Set("PhoneLinkCloseToTrayPrompted", "1");
+            return;
+        }
+        var xamlRoot = App.MainWindow?.Content?.XamlRoot;
+        if (xamlRoot is null) return; // 窗口还没就绪：不消耗标记，下次打开再问
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = xamlRoot,
+            RequestedTheme = ThemeService.CurrentElementTheme,
+            Title = LocalizationService.L("Settings_CloseToTray_Title", "关闭主窗口时最小化到系统托盘"),
+            Content = new TextBlock
+            {
+                TextWrapping = TextWrapping.Wrap,
+                Text = LocalizationService.L("Settings_CloseToTray_Desc",
+                           "点关闭按钮不再退出程序，而是留在系统托盘继续运行，避免误关闭后重启时重新检测硬件信息；双击托盘图标恢复窗口，右键可退出")
+                       + "\n\n开启后关闭窗口时，手机连接会继续在系统托盘后台运行，手机随时可以再连上。"
+            },
+            PrimaryButtonText = "开启",
+            CloseButtonText = "暂不开启",
+            DefaultButton = ContentDialogButton.Primary
+        };
+        var confirmed = false;
+        dialog.PrimaryButtonClick += (_, _) => confirmed = true;
+        // 弹窗真的出现（无论选哪个按钮）才算「问过了」；被其他弹窗挡住没弹出来则下次再问
+        var shown = await ContentDialogGuard.ShowWhenIdleAsync(dialog, TimeSpan.FromSeconds(10));
+        if (!shown) return;
+        AppSettings.Set("PhoneLinkCloseToTrayPrompted", "1");
+        if (confirmed) CloseToTrayService.SetEnabled(true);
     }
 
     private static async Task UpdateQrAsync(Image target, string payload)

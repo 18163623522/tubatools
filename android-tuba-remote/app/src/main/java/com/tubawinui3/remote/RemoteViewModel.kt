@@ -5,6 +5,7 @@ import android.graphics.BitmapFactory
 import android.os.Build
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.ImageBitmap
@@ -16,13 +17,20 @@ import com.tubawinui3.remote.data.ApiException
 import com.tubawinui3.remote.data.ChatMessage
 import com.tubawinui3.remote.data.ConnectTarget
 import com.tubawinui3.remote.data.HardwareSection
+import com.tubawinui3.remote.data.PcStore
+import com.tubawinui3.remote.data.SavedPc
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
+/** 电脑在线状态（「我的电脑」列表展示）。 */
+enum class PcStatus { Unknown, Checking, Online, Offline }
+
 class RemoteViewModel(app: Application) : AndroidViewModel(app) {
     private val prefs = app.getSharedPreferences("remote", 0)
+    private val pcsPrefKey = "pcs"
+    private val lastPcPrefKey = "lastPcId"
 
     var client by mutableStateOf<ApiClient?>(null)
         private set
@@ -44,44 +52,152 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
         private set
     val messages = mutableStateListOf<ChatMessage>()
 
+    /** 已记住的电脑（最近连接优先）。 */
+    val devices = mutableStateListOf<SavedPc>()
+
+    /** 每台电脑的在线状态。 */
+    val statuses = mutableStateMapOf<String, PcStatus>()
+
+    /** 需要用户输入配对码的目标（未配对 / 配对失效），由列表页弹出配对面板消费。 */
+    var pairTarget by mutableStateOf<ConnectTarget?>(null)
+        private set
+
     val connected get() = client != null
 
     private var pollJob: Job? = null
+    private var clientPcId: String? = null
 
-    /** 启动时尝试用上次保存的令牌自动重连；失败则回到连接界面。 */
+    init {
+        var list = PcStore.decode(prefs.getString(pcsPrefKey, null))
+        if (list.isEmpty()) {
+            // 旧版单机数据迁移：host/port/token → 单条目
+            val legacy = PcStore.migrate(
+                prefs.getString("host", null),
+                prefs.getInt("port", 18765),
+                prefs.getString("token", null),
+            )
+            if (legacy.isNotEmpty()) {
+                list = legacy
+                prefs.edit()
+                    .putString(pcsPrefKey, PcStore.encode(list))
+                    .putString(lastPcPrefKey, legacy.first().id)
+                    .remove("host")
+                    .remove("port")
+                    .remove("token")
+                    .apply()
+            }
+        }
+        devices.addAll(list)
+    }
+
+    // ───────── 设备列表 ─────────
+
+    private fun saveDevices(list: List<SavedPc>) {
+        devices.clear()
+        devices.addAll(list)
+        prefs.edit().putString(pcsPrefKey, PcStore.encode(list)).apply()
+    }
+
+    fun removeDevice(id: String) {
+        if (clientPcId == id) disconnect()
+        saveDevices(PcStore.remove(devices, id))
+        statuses.remove(id)
+        if (prefs.getString(lastPcPrefKey, null) == id) prefs.edit().remove(lastPcPrefKey).apply()
+    }
+
+    /** 并发探测各电脑在线状态（ping 不需要令牌）；在线时顺手把电脑名刷新回来。 */
+    fun refreshStatuses() {
+        val list = devices.toList()
+        for (pc in list) {
+            if (statuses[pc.id] == PcStatus.Checking) continue
+            if (statuses[pc.id] == null) statuses[pc.id] = PcStatus.Checking
+            viewModelScope.launch {
+                val name = runCatching { ApiClient(pc.host, pc.port).ping() }.getOrNull()
+                statuses[pc.id] = if (name != null) PcStatus.Online else PcStatus.Offline
+                if (!name.isNullOrEmpty() && name != pc.name) {
+                    saveDevices(PcStore.upsert(devices, pc.copy(name = name)))
+                }
+            }
+        }
+    }
+
+    // ───────── 连接 ─────────
+
+    /** 启动时用上次电脑的令牌自动重连；失败（或无令牌）回到「我的电脑」列表。 */
     fun tryRestore() {
-        val host = prefs.getString("host", null) ?: return
-        val token = prefs.getString("token", null) ?: return
-        val c = ApiClient(host, prefs.getInt("port", 18765), token)
+        val lastId = prefs.getString(lastPcPrefKey, null) ?: return
+        val pc = devices.firstOrNull { it.id == lastId } ?: return
+        val token = pc.token ?: return
         connecting = true
         viewModelScope.launch {
+            val c = ApiClient(pc.host, pc.port, token)
             try {
                 c.info()
-                hostName = c.ping().ifEmpty { host }
-                onConnected(c)
+                hostName = c.ping().ifEmpty { pc.name.ifEmpty { pc.host } }
+                onConnected(c, pc)
             } catch (e: ApiException) {
-                if (e.code == 401) prefs.edit().remove("token").apply()
+                if (e.code == 401) updateToken(pc.id, null)
             } finally {
                 connecting = false
             }
         }
     }
 
-    val lastTarget: ConnectTarget?
-        get() = prefs.getString("host", null)?.let { ConnectTarget(it, prefs.getInt("port", 18765)) }
+    /** 列表点按：有令牌直接连（401 转配对），没有令牌则请用户输入配对码。 */
+    fun requestConnect(pc: SavedPc) {
+        if (connecting) return
+        val token = pc.token
+        if (token == null) {
+            pairTarget = ConnectTarget(pc.host, pc.port, name = pc.name.ifEmpty { null })
+            return
+        }
+        connecting = true
+        error = null
+        viewModelScope.launch {
+            val c = ApiClient(pc.host, pc.port, token)
+            try {
+                c.info()
+                hostName = c.ping().ifEmpty { pc.name.ifEmpty { pc.host } }
+                onConnected(c, pc)
+            } catch (e: ApiException) {
+                if (e.code == 401) {
+                    updateToken(pc.id, null)
+                    pairTarget = ConnectTarget(pc.host, pc.port, name = pc.name.ifEmpty { null })
+                    error = "配对已失效，请输入电脑上的 6 位配对码"
+                } else {
+                    error = e.message
+                }
+            } finally {
+                connecting = false
+            }
+        }
+    }
 
+    fun clearPairTarget() {
+        pairTarget = null
+    }
+
+    /** 用配对码连接（添加新电脑 / 重新配对都走这里）。 */
     fun connect(target: ConnectTarget, code: String) {
         if (connecting) return
         if (code.isBlank()) { error = "请输入电脑上显示的 6 位配对码"; return }
         connecting = true
         error = null
-        val c = ApiClient(target.host, target.port)
         viewModelScope.launch {
+            val c = ApiClient(target.host, target.port)
             try {
                 val name = c.pair(code.trim(), "${Build.MANUFACTURER} ${Build.MODEL}")
-                hostName = target.name ?: name
-                prefs.edit().putString("host", target.host).putInt("port", target.port).putString("token", c.token).apply()
-                onConnected(c)
+                val pc = SavedPc(
+                    host = target.host,
+                    port = target.port,
+                    name = target.name ?: name,
+                    token = c.token,
+                    lastConnectedAt = System.currentTimeMillis(),
+                )
+                saveDevices(PcStore.upsert(devices, pc))
+                hostName = pc.name
+                onConnected(c, pc)
+                pairTarget = null
             } catch (e: ApiException) {
                 error = e.message
             } finally {
@@ -90,21 +206,31 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun scanError(msg: String) { error = msg }
+    fun scanError(msg: String) {
+        error = msg
+    }
 
+    /** 断开当前连接（回到列表）：保留条目与令牌，再次连接无需重新配对。 */
     fun disconnect() {
         pollJob?.cancel()
         client = null
+        clientPcId = null
         hardware = null
         screenshot = null
         messages.clear()
-        prefs.edit().remove("token").apply()
     }
 
-    private fun onConnected(c: ApiClient) {
+    private fun updateToken(id: String, token: String?) {
+        saveDevices(devices.map { if (it.id == id) it.copy(token = token) else it })
+    }
+
+    private fun onConnected(c: ApiClient, pc: SavedPc) {
         client = c
+        clientPcId = pc.id
         error = null
         messages.clear()
+        prefs.edit().putString(lastPcPrefKey, pc.id).apply()
+        saveDevices(PcStore.touch(devices, pc.id, System.currentTimeMillis()))
         refreshScreenshot()
         loadHardware()
         pollJob?.cancel()
@@ -128,6 +254,7 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun disconnectKeepTarget() {
         client = null
+        clientPcId = null
         hardware = null
         screenshot = null
     }

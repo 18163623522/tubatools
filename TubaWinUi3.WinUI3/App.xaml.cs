@@ -25,6 +25,22 @@ public partial class App : Application
     /// <summary>是否已进入退出流程（托盘「退出」等明确退出请求）——窗口关闭拦截据此放行，不再隐藏到托盘。</summary>
     public static bool IsExiting => _exiting;
 
+    private const string MainInstanceMutexName = "TubaWinUi3.MainInstance";
+    private static Mutex? _mainInstanceMutex;
+
+    private static readonly TaskCompletionSource<string?> _toolkitToastActivation =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    private static void OnToolkitToastActivated(Microsoft.Toolkit.Uwp.Notifications.ToastNotificationActivatedEventArgsCompat e)
+        => _toolkitToastActivation.TrySetResult(e.Argument);
+
+    /// <summary>主实例是否在运行（仅用于连接手机通知点击的转发判定；不拦截普通双开）。</summary>
+    private static bool IsMainInstanceRunning()
+    {
+        try { return Mutex.TryOpenExisting(MainInstanceMutexName, out _); }
+        catch { return false; }
+    }
+
     public App()
     {
         Environment.SetEnvironmentVariable("MICROSOFT_WINDOWSAPPRUNTIME_BASE_DIRECTORY", AppContext.BaseDirectory);
@@ -53,6 +69,10 @@ public partial class App : Application
 
         // 界面语言必须在任何打了 Uid 的控件创建前就绪（MainWindow 在 OnLaunched 里创建）。
         LocalizationService.Initialize();
+
+        // 通知身份（图吧工具箱）与点击回跳注册必须早于任何 Toast；工具包通知激活通道一并订阅。
+        PhoneLinkNotifier.EnsureRegistered();
+        try { Microsoft.Toolkit.Uwp.Notifications.ToastNotificationManagerCompat.OnActivated += OnToolkitToastActivated; } catch { }
 
         // 「关闭主窗口 → 最小化到系统托盘」：注销/关机时必须放行关闭，否则会拖住系统注销
         CloseToTrayService.AttachSessionEndingWatch();
@@ -286,6 +306,77 @@ public partial class App : Application
             return;
         }
 
+        // 「连接手机」Toast 点击：Windows 通过注册的 COM 服务器启动本程序（--phone-toast-handler + key=value 参数）。
+        // 主实例已在运行 → 写激活文件交给它（恢复窗口 + 打开聊天/任务弹窗）后退出；
+        // 没有主实例 → 记下待处理目标，继续正常启动流程（后续自动提权、建窗、导航并消费）。
+        var phoneHandlerIndex = Array.FindIndex(cmdLine, a => string.Equals(a, PhoneLinkNotifier.HandlerArg, StringComparison.OrdinalIgnoreCase));
+        if (phoneHandlerIndex >= 0)
+        {
+            var (action, target, jobId) = PhoneLinkNotifier.ParseHandlerArgs(cmdLine.Skip(phoneHandlerIndex + 1));
+            if (action.Equals("phone-link", StringComparison.OrdinalIgnoreCase))
+            {
+                if (IsMainInstanceRunning())
+                {
+                    PhoneLinkActivation.WriteRequestFile(target, jobId);
+                    Exit();
+                    return;
+                }
+                PhoneLinkActivation.SetPending(target, jobId);
+            }
+            else
+            {
+                // 注册共存保底：主动拦截的通知若被路由到本处理器，转交正常入口
+                if (action.Equals("show-active-intercept", StringComparison.OrdinalIgnoreCase))
+                {
+                    try
+                    {
+                        Process.Start(new ProcessStartInfo
+                        {
+                            FileName = Environment.ProcessPath!,
+                            Arguments = "--show-active-intercept",
+                            UseShellExecute = true
+                        });
+                    }
+                    catch { }
+                }
+                Exit();
+                return;
+            }
+        }
+
+        // Toolkit 通知激活通道（防御）：本进程由通知/按钮点击拉起（工具包自建身份挂的钩子）时，
+        // 等 OnActivated 参数（最多 3 秒）后走与 --phone-toast-handler 相同的转发逻辑。
+        if (Microsoft.Toolkit.Uwp.Notifications.ToastNotificationManagerCompat.WasCurrentProcessToastActivated())
+        {
+            var argument = _toolkitToastActivation.Task.Wait(TimeSpan.FromSeconds(3)) ? _toolkitToastActivation.Task.Result : null;
+            var (toolkitAction, toolkitTarget, toolkitJob) = PhoneLinkNotifier.ParseArgumentString(argument);
+            if (toolkitAction.Equals("show-active-intercept", StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    Process.Start(new ProcessStartInfo
+                    {
+                        FileName = Environment.ProcessPath!,
+                        Arguments = "--show-active-intercept",
+                        UseShellExecute = true
+                    });
+                }
+                catch { }
+                Exit();
+                return;
+            }
+            if (toolkitAction.Equals("phone-link", StringComparison.OrdinalIgnoreCase))
+            {
+                if (IsMainInstanceRunning())
+                {
+                    PhoneLinkActivation.WriteRequestFile(toolkitTarget, toolkitJob);
+                    Exit();
+                    return;
+                }
+                PhoneLinkActivation.SetPending(toolkitTarget, toolkitJob);
+            }
+        }
+
         // EnergyStar silent auto-start (scheduled-task launched this instance
         // in the background — silently enable EcoQoS without showing the main UI).
         var silentEnergyStar = cmdLine
@@ -308,10 +399,19 @@ public partial class App : Application
             return;
         }
 
+        try { _mainInstanceMutex = new Mutex(true, MainInstanceMutexName); } catch { }
         _window = new MainWindow();
         _window.Activate();
         ToolItem.SetUIDispatcher(_window.DispatcherQueue);
         BrowserAutomationService.Initialize(_window.DispatcherQueue);
+
+        // 连接手机：订阅消息/任务事件弹原生通知、注册 Toast 点击回跳、监听激活请求。
+        PhoneLinkNotifier.Initialize();
+        PhoneLinkActivation.StartWatcher(req => _window?.DispatcherQueue.TryEnqueue(() => OpenPhoneLinkActivation(req)));
+        if (PhoneLinkActivation.HasPending)
+            _window.DispatcherQueue.TryEnqueue(() => OpenPhoneLinkActivation(null));
+        // 首次连接授权：配对成功但是本机未批准过的设备时，弹窗请用户确认。
+        PhoneLinkService.PairApprovalHandler = RequestPairApprovalAsync;
         // 游戏后台自动覆盖层：常驻轮询后端信号文件（检测到全屏游戏自动显示悬浮窗）
         Services.GameOverlayAutoService.Instance.Start();
 
@@ -383,6 +483,75 @@ public partial class App : Application
         }
 
         _ = RunStartupSequenceAsync();
+    }
+
+    /// <summary>处理连接手机的通知点击：恢复窗口并打开连接手机页面（页面 Loaded 时消费待处理目标弹聊天/任务弹窗）。</summary>
+    private void OpenPhoneLinkActivation(PhoneLinkActivationRequest? request)
+    {
+        var window = _window;
+        if (window is null) return;
+        try
+        {
+            window.RestoreFromTray();
+            var target = request?.Target ?? "";
+            if (target == "chat" && PhoneLinkUiState.ChatDialogVisible) return;
+            if (target == "jobs" && PhoneLinkUiState.JobsDialogVisible) return;
+            if (request is not null) PhoneLinkActivation.SetPending(request.Target, request.JobId);
+            window.NavigateToToolPage(typeof(Pages.BuiltinToolsPage), "phone-link");
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[PhoneLink] 处理通知点击失败：{ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 「第一次连接需要电脑端授权」：手机配对码验证通过后，在电脑上弹窗请用户允许/拒绝。
+    /// 无窗口或 60 秒未确认按拒绝处理（手机端会收到 403「电脑端未允许本次连接」）。
+    /// </summary>
+    private Task<bool> RequestPairApprovalAsync(string deviceName)
+    {
+        var window = _window;
+        if (window is null) return Task.FromResult(false);
+
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        window.DispatcherQueue.TryEnqueue(async () =>
+        {
+            try
+            {
+                window.RestoreFromTray();
+                var confirmed = false;
+                var dialog = new ContentDialog
+                {
+                    XamlRoot = window.Content?.XamlRoot,
+                    RequestedTheme = ThemeService.CurrentElementTheme,
+                    Title = "手机请求连接这台电脑",
+                    Content = new TextBlock
+                    {
+                        TextWrapping = TextWrapping.Wrap,
+                        Text = $"「{deviceName}」正在请求连接。\n\n允许后，这台手机可以查看电脑信息、执行 PowerShell 命令、安装软件并互传文件；该设备会被记住，下次连接不再询问。"
+                    },
+                    PrimaryButtonText = "允许",
+                    CloseButtonText = "拒绝",
+                    DefaultButton = ContentDialogButton.Primary
+                };
+                dialog.PrimaryButtonClick += (_, _) => confirmed = true;
+                var shown = await ContentDialogGuard.ShowWhenIdleAsync(dialog, TimeSpan.FromSeconds(10));
+                tcs.TrySetResult(shown && confirmed);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[PhoneLink] 授权弹窗失败：{ex.Message}");
+                tcs.TrySetResult(false);
+            }
+        });
+
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(TimeSpan.FromSeconds(60));
+            tcs.TrySetResult(false);
+        });
+        return tcs.Task;
     }
 
     /// <summary>

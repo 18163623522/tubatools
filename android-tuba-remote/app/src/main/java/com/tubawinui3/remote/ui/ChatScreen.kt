@@ -51,12 +51,15 @@ import com.tubawinui3.remote.data.ApiClient
 import com.tubawinui3.remote.data.ApiException
 import com.tubawinui3.remote.data.ChatMessage
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.InputStream
 import java.text.DateFormat
 import java.util.Date
+import java.util.concurrent.atomic.AtomicLong
 
 private const val MAX_PREVIEW_BYTES = 12L * 1024 * 1024
 
@@ -67,6 +70,7 @@ fun ChatScreen(vm: RemoteViewModel, client: ApiClient, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     var text by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
+    var speedText by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
 
     fun toast(s: String) = Toast.makeText(ctx, s, Toast.LENGTH_SHORT).show()
@@ -74,16 +78,33 @@ fun ChatScreen(vm: RemoteViewModel, client: ApiClient, onBack: () -> Unit) {
     fun upload(uri: Uri, isImage: Boolean) {
         val (name, size) = queryNameSize(ctx, uri)
         busy = true
+        speedText = ""
         scope.launch {
+            val counter = AtomicLong(0)
+            val ticker = launch {
+                var last = 0L
+                var lastAt = System.currentTimeMillis()
+                while (true) {
+                    delay(300)
+                    val now = counter.get()
+                    val at = System.currentTimeMillis()
+                    val dt = at - lastAt
+                    if (dt > 0) speedText = fmtSpeed((now - last) * 1000.0 / dt)
+                    last = now
+                    lastAt = at
+                }
+            }
             try {
                 val m = client.chatUpload(name, isImage, size) {
-                    ctx.contentResolver.openInputStream(uri) ?: throw ApiException("无法读取所选文件")
+                    CountingInputStream(ctx.contentResolver.openInputStream(uri) ?: throw ApiException("无法读取所选文件"), counter)
                 }
                 vm.addMessage(m)
             } catch (e: ApiException) {
                 toast("发送失败：${e.message}")
             } finally {
+                ticker.cancel()
                 busy = false
+                speedText = ""
             }
         }
     }
@@ -103,7 +124,7 @@ fun ChatScreen(vm: RemoteViewModel, client: ApiClient, onBack: () -> Unit) {
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     TextButton(enabled = !busy, onClick = { pickImage.launch("image/*") }) { Text("图片") }
                     TextButton(enabled = !busy, onClick = { pickFile.launch("*/*") }) { Text("文件") }
-                    if (busy) Text("发送中…", Modifier.align(Alignment.CenterVertically), style = MaterialTheme.typography.bodySmall)
+                    if (busy) Text(if (speedText.isNotEmpty()) "发送中 $speedText" else "发送中…", Modifier.align(Alignment.CenterVertically), style = MaterialTheme.typography.bodySmall)
                 }
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(value = text, onValueChange = { text = it }, modifier = Modifier.weight(1f), maxLines = 4, placeholder = { Text("发送给电脑…") })
@@ -126,8 +147,11 @@ fun ChatScreen(vm: RemoteViewModel, client: ApiClient, onBack: () -> Unit) {
                 Bubble(m, client, onSave = {
                     scope.launch {
                         try {
+                            val started = System.currentTimeMillis()
                             saveToDownloads(ctx, client, m)
-                            toast("已保存到下载目录：${m.fileName}")
+                            val seconds = (System.currentTimeMillis() - started) / 1000.0
+                            val avg = if (m.size > 0 && seconds > 0.3) "（平均 ${fmtSpeed(m.size / seconds)}）" else ""
+                            toast("已保存到下载目录：${m.fileName}$avg")
                         } catch (e: Exception) {
                             toast("保存失败：${e.message}")
                         }
@@ -179,6 +203,23 @@ private suspend fun loadImage(client: ApiClient, m: ChatMessage): ImageBitmap? =
     }
 } catch (_: Exception) {
     null
+}
+
+/** 统计已读取字节数的输入流（用于显示上传速度）。 */
+private class CountingInputStream(private val inner: InputStream, private val counter: AtomicLong) : InputStream() {
+    override fun read(): Int = inner.read().also { if (it >= 0) counter.incrementAndGet() }
+    override fun read(b: ByteArray, off: Int, len: Int): Int =
+        inner.read(b, off, len).also { if (it > 0) counter.addAndGet(it.toLong()) }
+
+    override fun close() = inner.close()
+    override fun available(): Int = inner.available()
+}
+
+private fun fmtSpeed(bps: Double): String = when {
+    bps >= 1L shl 30 -> "%.2f GB/s".format(bps / (1L shl 30))
+    bps >= 1L shl 20 -> "%.1f MB/s".format(bps / (1L shl 20))
+    bps >= 1L shl 10 -> "%.1f KB/s".format(bps / 1024.0)
+    else -> "%.0f B/s".format(bps)
 }
 
 private fun humanSize(n: Long): String = when {

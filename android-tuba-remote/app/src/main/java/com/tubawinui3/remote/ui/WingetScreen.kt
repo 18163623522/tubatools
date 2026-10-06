@@ -53,7 +53,7 @@ fun WingetScreen(client: ApiClient, onBack: () -> Unit) {
         log = "正在创建安装任务…"
         scope.launch {
             try {
-                val job = client.wingetInstall(item.id)
+                val job = client.wingetInstall(item.id, item.name)
                 while (true) {
                     val s = client.wingetJob(job)
                     log = s.output.takeLast(4000)

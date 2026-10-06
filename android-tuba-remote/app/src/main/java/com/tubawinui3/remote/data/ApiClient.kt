@@ -64,6 +64,11 @@ class ApiClient(val host: String, val port: Int, var token: String? = null) {
         .build()
     private val longHttp = http.newBuilder().readTimeout(650, TimeUnit.SECONDS).build()
     private val transferHttp = http.newBuilder().readTimeout(0, TimeUnit.SECONDS).writeTimeout(0, TimeUnit.SECONDS).build()
+    /** 状态探测（在线/离线）：短超时，避免列表刷新被不在线的电脑拖慢。 */
+    private val statusHttp = http.newBuilder()
+        .connectTimeout(2500, TimeUnit.MILLISECONDS)
+        .readTimeout(4000, TimeUnit.MILLISECONDS)
+        .build()
     private val jsonType = "application/json; charset=utf-8".toMediaType()
 
     private fun url(path: String, vararg q: Pair<String, String>): HttpUrl {
@@ -99,11 +104,14 @@ class ApiClient(val host: String, val port: Int, var token: String? = null) {
             call(client, builder(url(path)).post(body.toString().toRequestBody(jsonType)).build(), { obj(it) })
         }
 
-    suspend fun ping(): String = getObj("/api/ping")["host"]?.jsonPrimitive?.contentOrNull ?: ""
+    suspend fun ping(): String =
+        withContext(Dispatchers.IO) { call(statusHttp, builder(url("/api/ping")).get().build(), { obj(it) }) }["host"]
+            ?.jsonPrimitive?.contentOrNull ?: ""
 
-    /** 用配对码换取令牌；成功后 [token] 即被设置。返回电脑名。 */
+    /** 用配对码换取令牌；成功后 [token] 即被设置。返回电脑名。
+     *  首次连接需要在电脑上弹窗授权，等待时间可能较长（最长约 1 分钟），因此用长超时客户端。 */
     suspend fun pair(code: String, deviceName: String): String {
-        val o = postObj(http, "/api/pair", buildJsonObject { put("code", code); put("deviceName", deviceName) })
+        val o = postObj(longHttp, "/api/pair", buildJsonObject { put("code", code); put("deviceName", deviceName) })
         token = o["token"]?.jsonPrimitive?.contentOrNull ?: throw ApiException("配对失败")
         return o["host"]?.jsonPrimitive?.contentOrNull ?: host
     }
@@ -161,8 +169,11 @@ class ApiClient(val host: String, val port: Int, var token: String? = null) {
         }
     }
 
-    suspend fun wingetInstall(id: String): String =
-        postObj(http, "/api/winget/install", buildJsonObject { put("id", id) })["jobId"]?.jsonPrimitive?.contentOrNull
+    suspend fun wingetInstall(id: String, name: String? = null): String =
+        postObj(http, "/api/winget/install", buildJsonObject {
+            put("id", id)
+            if (!name.isNullOrBlank()) put("name", name)
+        })["jobId"]?.jsonPrimitive?.contentOrNull
             ?: throw ApiException("安装任务创建失败")
 
     suspend fun wingetJob(jobId: String): WingetJobState {

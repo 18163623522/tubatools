@@ -4,7 +4,6 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -13,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Card
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -45,12 +43,8 @@ fun RemoteApp(vm: RemoteViewModel) {
     val client = vm.client
 
     if (client == null) {
-        // 未连接：背景占位 + 连接面板
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            if (vm.connecting) CircularProgressIndicator()
-            else Text("图吧工具箱手机助手", style = MaterialTheme.typography.titleLarge)
-        }
-        ConnectSheet(vm)
+        // 未连接：显示「我的电脑」列表（点按连接，可添加/删除，展示在线状态）
+        DeviceListScreen(vm)
         return
     }
 

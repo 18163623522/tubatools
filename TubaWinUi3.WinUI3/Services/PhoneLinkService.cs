@@ -11,6 +11,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using TubaWinUi3.Models;
 
 namespace TubaWinUi3.Services;
 
@@ -37,7 +38,10 @@ public sealed class PhoneChatMessage
 public static class PhoneLinkService
 {
     public const int DefaultPort = 18765;
-    internal const int MaxUploadBytes = 512 * 1024 * 1024;
+    /// <summary>单文件上传上限 20 GB（局域网直传、边收边落盘，不经过内存缓存）。</summary>
+    internal const long MaxUploadBytes = 20L * 1024 * 1024 * 1024;
+    /// <summary>文件传输 I/O 缓冲 1 MB：把局域网直传吞吐拉到接近链路理论速度。</summary>
+    private const int IoBufferSize = 1 << 20;
 
     private static HttpListener? _listener;
     private static CancellationTokenSource? _cts;
@@ -46,7 +50,9 @@ public static class PhoneLinkService
     private static readonly ConcurrentDictionary<string, PairedDevice> _tokens = new();
     private static readonly List<PhoneChatMessage> _messages = [];
     private static readonly Dictionary<string, string> _filePaths = [];
-    private static readonly ConcurrentDictionary<string, WingetJob> _jobs = new();
+    private static readonly object _jobsLock = new();
+    private static readonly List<PhoneJob> _jobList = [];
+    private static readonly Dictionary<string, PhoneJob> _jobs = [];
     private static long _seq;
     private static int _failedPairs;
     private static DateTime _lockedUntil = DateTime.MinValue;
@@ -56,14 +62,64 @@ public static class PhoneLinkService
     public static string PairCode { get; private set; } = NewPairCode();
     public static event Action? StateChanged;
     public static event Action<PhoneChatMessage>? MessageAdded;
+    public static event Action? JobsChanged;
+    public static event Action<PhoneJob>? JobStarted;
+    public static event Action<PhoneJob>? JobFinished;
+    public static event Action<PhoneTransferProgress>? TransferProgress;
 
-    public static string InboxDir => Path.Combine(ConfigManager.GetDataDir(), "PhoneLink", "Inbox");
+    private const string ReceiveDirSettingKey = "PhoneLinkReceiveDir";
+    private static string? _defaultReceiveDir;
+
+    /// <summary>用户自定义的接收位置；未设置时为 null（用 Windows「下载」文件夹）。</summary>
+    public static string? CustomReceiveDir
+    {
+        get
+        {
+            var value = AppSettings.Get(ReceiveDirSettingKey);
+            return string.IsNullOrWhiteSpace(value) ? null : value;
+        }
+    }
+
+    /// <summary>设置接收位置（null/空 = 恢复默认的 Windows「下载」文件夹）。</summary>
+    public static void SetReceiveDir(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) AppSettings.Remove(ReceiveDirSettingKey);
+        else AppSettings.Set(ReceiveDirSettingKey, path);
+    }
+
+    /// <summary>接收文件目录：用户自定义位置优先，否则 Windows「下载」文件夹（手机发来的文件只存这一份）。</summary>
+    public static string ReceiveDir
+    {
+        get
+        {
+            var custom = CustomReceiveDir;
+            if (custom is not null)
+            {
+                try
+                {
+                    Directory.CreateDirectory(custom);
+                    return custom;
+                }
+                catch
+                {
+                    // 自定义位置已不可用（目录被删/磁盘移除）→ 回退默认
+                }
+            }
+            return _defaultReceiveDir ??= DownloadsFolder.Resolve();
+        }
+    }
 
     public static IReadOnlyList<string> PairedDeviceNames => _tokens.Values.Select(d => d.Name).Distinct().ToList();
 
     public static IReadOnlyList<PhoneChatMessage> GetMessages()
     {
         lock (_messages) return _messages.ToList();
+    }
+
+    /// <summary>取某条文件/图片消息在本机的文件路径（聊天弹窗缩略图与「另存为」用）。</summary>
+    public static string? GetMessageFilePath(string messageId)
+    {
+        lock (_messages) return _filePaths.GetValueOrDefault(messageId);
     }
 
     // ───────────────────────── 地址 / 配对 ─────────────────────────
@@ -134,6 +190,71 @@ public static class PhoneLinkService
     internal static bool FixedTimeEquals(string a, string b) =>
         CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(a), Encoding.UTF8.GetBytes(b));
 
+    // ───────────────────────── 首次连接授权 ─────────────────────────
+
+    private const string ApprovedDevicesSettingKey = "PhoneLinkApprovedDevices";
+    private static readonly HashSet<string> _approvedDevices = LoadApprovedDevices();
+
+    /// <summary>电脑端首次连接授权回调（App 注册并弹窗；未注册时新设备一律拒绝）。</summary>
+    internal static Func<string, Task<bool>>? PairApprovalHandler;
+
+    private static HashSet<string> LoadApprovedDevices()
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            var json = AppSettings.Get(ApprovedDevicesSettingKey);
+            if (!string.IsNullOrWhiteSpace(json))
+            {
+                foreach (var name in System.Text.Json.JsonSerializer.Deserialize<List<string>>(json) ?? [])
+                    if (!string.IsNullOrWhiteSpace(name)) set.Add(name);
+            }
+        }
+        catch
+        {
+        }
+        return set;
+    }
+
+    /// <summary>该设备已被记住（或当前就有它的在线令牌）→ 无需再次询问。</summary>
+    internal static bool IsDeviceApproved(string deviceName)
+    {
+        lock (_approvedDevices)
+        {
+            if (_approvedDevices.Contains(deviceName)) return true;
+        }
+        return _tokens.Values.Any(d => string.Equals(d.Name, deviceName, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static void RememberApprovedDevice(string deviceName)
+    {
+        lock (_approvedDevices)
+        {
+            if (!_approvedDevices.Add(deviceName)) return;
+            try { AppSettings.Set(ApprovedDevicesSettingKey, System.Text.Json.JsonSerializer.Serialize(_approvedDevices.ToList())); } catch { }
+        }
+    }
+
+    /// <summary>新设备连接前必须经电脑端弹窗授权；拒绝/超时/无 UI 都视为拒绝。</summary>
+    private static async Task<bool> EnsureDeviceApprovedAsync(string deviceName)
+    {
+        if (IsDeviceApproved(deviceName)) return true;
+        var handler = PairApprovalHandler;
+        var approved = false;
+        if (handler is not null)
+        {
+            try { approved = await handler(deviceName).ConfigureAwait(false); } catch { approved = false; }
+        }
+        if (approved) RememberApprovedDevice(deviceName);
+        return approved;
+    }
+
+    private static void RevokeToken(string token)
+    {
+        _tokens.TryRemove(token, out _);
+        StateChanged?.Invoke();
+    }
+
     private static bool IsAuthorized(HttpListenerRequest req)
     {
         var token = req.Headers["X-Token"];
@@ -155,7 +276,7 @@ public static class PhoneLinkService
     public static void Start()
     {
         if (IsRunning) return;
-        Directory.CreateDirectory(InboxDir);
+        try { Directory.CreateDirectory(ReceiveDir); } catch { }
         _cts = new CancellationTokenSource();
         var listener = new HttpListener();
         for (var attempt = 0; ; attempt++)
@@ -187,10 +308,71 @@ public static class PhoneLinkService
         if (!IsRunning) return;
         IsRunning = false;
         _cts?.Cancel();
+        foreach (var job in GetJobs().Where(j => j.IsRunning)) CancelJob(job.Id);
         try { _listener?.Stop(); _listener?.Close(); } catch { }
         _listener = null;
         _tokens.Clear();
         StateChanged?.Invoke();
+    }
+
+    // ───────────────────────── 手机任务（exec / winget）─────────────────────────
+
+    public static IReadOnlyList<PhoneJob> GetJobs()
+    {
+        lock (_jobsLock) return _jobList.ToList();
+    }
+
+    public static PhoneJob? GetJob(string id)
+    {
+        lock (_jobsLock) return _jobs.GetValueOrDefault(id);
+    }
+
+    /// <summary>终止运行中的任务（exec 取消 CTS 并杀进程树；winget 杀进程树）。</summary>
+    public static bool CancelJob(string id)
+    {
+        var job = GetJob(id);
+        if (job is null || !job.IsRunning) return false;
+        job.CancelRequestedByUser = true;
+        try { job.Cts?.Cancel(); } catch { }
+        try { job.Proc?.Kill(true); } catch { }
+        JobsChanged?.Invoke();
+        return true;
+    }
+
+    private static PhoneJob CreateJob(PhoneJobKind kind, string title)
+    {
+        var job = new PhoneJob { Id = Guid.NewGuid().ToString("N"), Kind = kind, Title = title };
+        lock (_jobsLock)
+        {
+            _jobs[job.Id] = job;
+            _jobList.Add(job);
+            TrimJobsLocked();
+        }
+        JobStarted?.Invoke(job);
+        JobsChanged?.Invoke();
+        return job;
+    }
+
+    internal static void FinishJob(PhoneJob job, PhoneJobStatus status, int exitCode)
+    {
+        job.Status = status;
+        job.ExitCode = exitCode;
+        job.FinishedAt = DateTime.Now;
+        job.Proc = null;
+        JobFinished?.Invoke(job);
+        JobsChanged?.Invoke();
+    }
+
+    /// <summary>上限 50 条：只丢已结束的最旧任务，运行中的永不丢（锁内调用）。</summary>
+    private static void TrimJobsLocked()
+    {
+        while (_jobList.Count > 50)
+        {
+            var index = _jobList.FindIndex(j => !j.IsRunning);
+            if (index < 0) return;
+            _jobs.Remove(_jobList[index].Id);
+            _jobList.RemoveAt(index);
+        }
     }
 
     private static async Task ListenLoop(HttpListener listener, CancellationToken ct)
@@ -227,9 +409,22 @@ public static class PhoneLinkService
         if (path == "/api/pair" && method == "POST")
         {
             var body = await ReadJson(req);
-            var (token, error) = TryPair(Str(body, "code"), Str(body, "deviceName"));
-            if (token is null) await WriteJson(ctx, 403, new { error });
-            else await WriteJson(ctx, 200, new { token, host = Environment.MachineName });
+            var deviceName = Str(body, "deviceName");
+            var (token, error) = TryPair(Str(body, "code"), deviceName);
+            if (token is null)
+            {
+                await WriteJson(ctx, 403, new { error });
+                return;
+            }
+            // 首次连接需要电脑端弹窗授权（拒绝则立即吊销刚签发的令牌）
+            var name = string.IsNullOrWhiteSpace(deviceName) ? "手机" : deviceName.Trim();
+            if (!await EnsureDeviceApprovedAsync(name))
+            {
+                RevokeToken(token);
+                await WriteJson(ctx, 403, new { error = "电脑端未允许本次连接，请在电脑上确认后再试" });
+                return;
+            }
+            await WriteJson(ctx, 200, new { token, host = Environment.MachineName });
             return;
         }
 
@@ -278,7 +473,8 @@ public static class PhoneLinkService
                     var cmd = Str(body, "command");
                     if (string.IsNullOrWhiteSpace(cmd)) { await WriteJson(ctx, 400, new { error = "命令为空" }); return; }
                     var timeout = Math.Clamp(Int(body, "timeoutSec", 60), 1, 600);
-                    var (code, output) = await RunPowerShellAsync(cmd, timeout, ct);
+                    var job = CreateJob(PhoneJobKind.Exec, cmd!);
+                    var (code, output) = await RunPowerShellAsync(cmd!, timeout, ct, job);
                     await WriteJson(ctx, 200, new { exitCode = code, output });
                     return;
                 }
@@ -301,16 +497,18 @@ public static class PhoneLinkService
                 }
             case "/api/winget/install" when method == "POST":
                 {
-                    var id = Str(await ReadJson(req), "id");
+                    var body = await ReadJson(req);
+                    var id = Str(body, "id");
                     if (!IsValidWingetId(id)) { await WriteJson(ctx, 400, new { error = "软件包 ID 不合法" }); return; }
-                    await WriteJson(ctx, 200, new { jobId = StartWingetInstall(id!) });
+                    await WriteJson(ctx, 200, new { jobId = StartWingetInstall(id!, Str(body, "name")) });
                     return;
                 }
             case "/api/winget/job":
                 {
                     var jid = ParseQuery(req).GetValueOrDefault("id") ?? "";
-                    if (!_jobs.TryGetValue(jid, out var job)) { await WriteJson(ctx, 404, new { error = "任务不存在" }); return; }
-                    await WriteJson(ctx, 200, new { done = job.Done, exitCode = job.ExitCode, output = job.Snapshot() });
+                    var job = GetJob(jid);
+                    if (job is null) { await WriteJson(ctx, 404, new { error = "任务不存在" }); return; }
+                    await WriteJson(ctx, 200, new { done = !job.IsRunning, exitCode = job.ExitCode, output = job.Output });
                     return;
                 }
             case "/api/chat" when method == "GET":
@@ -335,13 +533,34 @@ public static class PhoneLinkService
                     var name = SanitizeFileName(q.GetValueOrDefault("name"));
                     var isImage = q.GetValueOrDefault("kind") == "image";
                     if (req.ContentLength64 > MaxUploadBytes) { await WriteJson(ctx, 413, new { error = "文件过大" }); return; }
-                    Directory.CreateDirectory(InboxDir);
-                    var dest = UniquePath(InboxDir, name);
+                    Directory.CreateDirectory(ReceiveDir);
+                    var dest = UniquePath(ReceiveDir, name);
+                    var reporter = new TransferSpeedReporter(Guid.NewGuid().ToString("N"), Path.GetFileName(dest),
+                        PhoneTransferDirection.Upload, req.ContentLength64, p => TransferProgress?.Invoke(p));
                     long size;
-                    await using (var fs = File.Create(dest))
+                    long received = 0;
+                    try
                     {
-                        await req.InputStream.CopyToAsync(fs, ct);
-                        size = fs.Length;
+                        // 1 MB 缓冲 + 异步顺序写：接收大文件时吞吐贴近链路理论速度
+                        await using (var fs = new FileStream(dest, FileMode.Create, FileAccess.Write, FileShare.None,
+                                     IoBufferSize, FileOptions.Asynchronous | FileOptions.SequentialScan))
+                        {
+                            var buffer = new byte[IoBufferSize];
+                            int read;
+                            while ((read = await req.InputStream.ReadAsync(buffer, ct)) > 0)
+                            {
+                                await fs.WriteAsync(buffer.AsMemory(0, read), ct);
+                                received += read;
+                                reporter.Report(received);
+                            }
+                            size = fs.Length;
+                        }
+                        reporter.Complete(received);
+                    }
+                    catch
+                    {
+                        reporter.Fail(received);
+                        throw;
                     }
                     var m = AddMessage("phone", isImage ? "image" : "file", "", Path.GetFileName(dest), size, dest);
                     await WriteJson(ctx, 200, m);
@@ -359,8 +578,29 @@ public static class PhoneLinkService
             ctx.Response.ContentType = "application/octet-stream";
             ctx.Response.ContentLength64 = fi.Length;
             ctx.Response.AddHeader("Content-Disposition", "attachment; filename*=UTF-8''" + Uri.EscapeDataString(fi.Name));
-            await using var fs = File.OpenRead(file);
-            await fs.CopyToAsync(ctx.Response.OutputStream, ct);
+            var downloadReporter = new TransferSpeedReporter(id, fi.Name, PhoneTransferDirection.Download,
+                fi.Length, p => TransferProgress?.Invoke(p));
+            long sent = 0;
+            try
+            {
+                // 1 MB 缓冲 + 异步顺序读：发送大文件时吞吐贴近链路理论速度
+                await using var fs = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read,
+                    IoBufferSize, FileOptions.Asynchronous | FileOptions.SequentialScan);
+                var buffer = new byte[IoBufferSize];
+                int read;
+                while ((read = await fs.ReadAsync(buffer, ct)) > 0)
+                {
+                    await ctx.Response.OutputStream.WriteAsync(buffer.AsMemory(0, read), ct);
+                    sent += read;
+                    downloadReporter.Report(sent);
+                }
+                downloadReporter.Complete(sent);
+            }
+            catch
+            {
+                downloadReporter.Fail(sent);
+                throw;
+            }
             return;
         }
 
@@ -496,23 +736,22 @@ public static class PhoneLinkService
         return psi;
     }
 
-    private const int MaxOutputChars = 200_000;
-
-    internal static async Task<(int ExitCode, string Output)> RunPowerShellAsync(string command, int timeoutSec, CancellationToken ct)
+    internal static async Task<(int ExitCode, string Output)> RunPowerShellAsync(string command, int timeoutSec, CancellationToken ct, PhoneJob job)
     {
         using var p = Process.Start(BuildPowerShellStartInfo(command));
-        if (p is null) return (-1, "无法启动 powershell");
-        var sb = new StringBuilder();
-        void Append(string? s)
+        if (p is null)
         {
-            if (s is null) return;
-            lock (sb) { if (sb.Length < MaxOutputChars) sb.AppendLine(s); }
+            job.AppendLine("无法启动 powershell");
+            FinishJob(job, PhoneJobStatus.Failed, -1);
+            return (-1, job.Output);
         }
-        p.OutputDataReceived += (_, e) => Append(e.Data);
-        p.ErrorDataReceived += (_, e) => Append(e.Data);
+        job.Proc = p;
+        p.OutputDataReceived += (_, e) => job.AppendLine(e.Data);
+        p.ErrorDataReceived += (_, e) => job.AppendLine(e.Data);
         p.BeginOutputReadLine();
         p.BeginErrorReadLine();
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        job.Cts = cts;
         cts.CancelAfter(TimeSpan.FromSeconds(timeoutSec));
         try
         {
@@ -522,30 +761,37 @@ public static class PhoneLinkService
         catch (OperationCanceledException)
         {
             try { p.Kill(true); } catch { }
-            lock (sb) sb.AppendLine($"[超时 {timeoutSec} 秒，已终止]");
-            return (-1, sb.ToString());
+            var reason = job.CancelRequestedByUser ? "[已由电脑端终止]"
+                : ct.IsCancellationRequested ? "[已停止服务]"
+                : $"[超时 {timeoutSec} 秒，已终止]";
+            job.AppendLine(reason);
+            FinishJob(job, job.CancelRequestedByUser || ct.IsCancellationRequested ? PhoneJobStatus.Cancelled : PhoneJobStatus.Failed, -1);
+            return (-1, job.Output);
         }
-        lock (sb) return (p.ExitCode, sb.ToString());
+        catch (Exception ex)
+        {
+            job.AppendLine("执行失败：" + ex.Message);
+            FinishJob(job, PhoneJobStatus.Failed, -1);
+            return (-1, job.Output);
+        }
+        finally
+        {
+            job.Cts = null;
+        }
+        var exitCode = p.ExitCode;
+        if (job.CancelRequestedByUser) job.AppendLine("[已由电脑端终止]");
+        FinishJob(job, job.CancelRequestedByUser ? PhoneJobStatus.Cancelled
+            : exitCode == 0 ? PhoneJobStatus.Done : PhoneJobStatus.Failed, exitCode);
+        return (exitCode, job.Output);
     }
 
     private static readonly Regex WingetIdRegex = new(@"^[A-Za-z0-9][A-Za-z0-9._+\-]{0,127}$", RegexOptions.Compiled);
 
     internal static bool IsValidWingetId(string? id) => !string.IsNullOrEmpty(id) && WingetIdRegex.IsMatch(id);
 
-    private sealed class WingetJob
+    private static string StartWingetInstall(string id, string? displayName)
     {
-        private readonly StringBuilder _sb = new();
-        public volatile bool Done;
-        public int ExitCode = -1;
-        public void Append(string? s) { if (s is null) return; lock (_sb) { if (_sb.Length < MaxOutputChars) _sb.AppendLine(s); } }
-        public string Snapshot() { lock (_sb) return _sb.ToString(); }
-    }
-
-    private static string StartWingetInstall(string id)
-    {
-        var jobId = Guid.NewGuid().ToString("N");
-        var job = new WingetJob();
-        _jobs[jobId] = job;
+        var job = CreateJob(PhoneJobKind.Winget, string.IsNullOrWhiteSpace(displayName) ? id : displayName.Trim());
         _ = Task.Run(async () =>
         {
             try
@@ -564,19 +810,32 @@ public static class PhoneLinkService
                              "--accept-package-agreements", "--accept-source-agreements" })
                     psi.ArgumentList.Add(a);
                 using var p = Process.Start(psi);
-                if (p is null) { job.Append("无法启动 winget"); return; }
-                p.OutputDataReceived += (_, e) => job.Append(e.Data);
-                p.ErrorDataReceived += (_, e) => job.Append(e.Data);
+                if (p is null)
+                {
+                    job.AppendLine("无法启动 winget");
+                    FinishJob(job, PhoneJobStatus.Failed, -1);
+                    return;
+                }
+                job.Proc = p;
+                p.OutputDataReceived += (_, e) => job.AppendLine(e.Data);
+                p.ErrorDataReceived += (_, e) => job.AppendLine(e.Data);
                 p.BeginOutputReadLine();
                 p.BeginErrorReadLine();
                 await p.WaitForExitAsync();
                 p.WaitForExit();
-                job.ExitCode = p.ExitCode;
+                var status = p.ExitCode == 0 ? PhoneJobStatus.Done
+                    : job.CancelRequestedByUser ? PhoneJobStatus.Cancelled
+                    : PhoneJobStatus.Failed;
+                if (status == PhoneJobStatus.Cancelled) job.AppendLine("[已由电脑端终止]");
+                FinishJob(job, status, p.ExitCode);
             }
-            catch (Exception ex) { job.Append("安装失败：" + ex.Message); }
-            finally { job.Done = true; }
+            catch (Exception ex)
+            {
+                job.AppendLine("安装失败：" + ex.Message);
+                FinishJob(job, PhoneJobStatus.Failed, -1);
+            }
         });
-        return jobId;
+        return job.Id;
     }
 
     // ───────────────────────── HTTP 辅助 ─────────────────────────
