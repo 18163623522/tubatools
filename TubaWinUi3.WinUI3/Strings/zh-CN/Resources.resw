@@ -2394,6 +2394,12 @@
   <data name="Builtin_stress-test_Name" xml:space="preserve">
     <value>一键三烤</value>
   </data>
+  <data name="Builtin_phone-link_Desc" xml:space="preserve">
+    <value>手机端通过局域网（二维码 / 配对码 / IP）连接电脑，实时查看硬件监控与屏幕截图，远程执行 PowerShell、winget 安装软件，并与电脑互传文字、图片和文件。</value>
+  </data>
+  <data name="Builtin_phone-link_Name" xml:space="preserve">
+    <value>连接手机</value>
+  </data>
   <data name="Builtin_time-sync_Desc" xml:space="preserve">
     <value>一键切换系统 NTP 时间服务器（阿里云 / 腾讯云 / 国家授时中心…），支持服务器测速、偏差检测、立即校时、时间服务修复与恢复系统默认</value>
   </data>

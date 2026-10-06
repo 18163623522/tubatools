@@ -2378,6 +2378,12 @@ Permissions
   <data name="Builtin_stress-test_Name" xml:space="preserve">
     <value>Triple Stress Test</value>
   </data>
+  <data name="Builtin_phone-link_Desc" xml:space="preserve">
+    <value>Connect the Android companion app over LAN (QR code / pairing code / IP) to monitor hardware, view screenshots, run PowerShell, install apps via winget and chat / transfer files.</value>
+  </data>
+  <data name="Builtin_phone-link_Name" xml:space="preserve">
+    <value>Connect Phone</value>
+  </data>
   <data name="Builtin_time-sync_Desc" xml:space="preserve">
     <value>Switch the system NTP time server in one click (Aliyun / Tencent Cloud / NTSC...), with server speed test, offset check, sync now, time service repair, and system default restore</value>
   </data>

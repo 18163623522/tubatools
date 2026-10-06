@@ -55,6 +55,7 @@ public static class BuiltinToolRegistry
         Register(new RuntimeRepairTool());
         Register(new DiskHealthTool());
         Register(new LanFileShareTool());
+        Register(new PhoneLinkTool());
         Register(new QuickDeviceCheckTool());
         Register(new NetworkOptimizeTool());
         Register(new EnergyStarTool());
