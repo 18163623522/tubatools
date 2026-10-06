@@ -14,25 +14,33 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <ListView x:Name="JobList" Grid.Row="0" Height="220" SelectionMode="Single"
-                  SelectionChanged="JobList_SelectionChanged"
-                  Background="Transparent" BorderThickness="0">
-            <ListView.ItemTemplate>
-                <DataTemplate x:DataType="local:PhoneJobRowVm">
-                    <Grid ColumnSpacing="12" Padding="0,4">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0" Spacing="2">
-                            <TextBlock Text="{x:Bind Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
-                            <TextBlock Text="{x:Bind Subtitle, Mode=OneWay}" FontSize="12" Opacity="0.7"/>
-                        </StackPanel>
-                        <TextBlock Grid.Column="1" Text="{x:Bind StatusText, Mode=OneWay}" VerticalAlignment="Center"/>
-                    </Grid>
-                </DataTemplate>
-            </ListView.ItemTemplate>
-        </ListView>
+        <Grid Grid.Row="0" Height="220">
+            <ListView x:Name="JobList" SelectionMode="Single"
+                      SelectionChanged="JobList_SelectionChanged"
+                      Background="Transparent" BorderThickness="0">
+                <ListView.ItemTemplate>
+                    <DataTemplate x:DataType="local:PhoneJobRowVm">
+                        <Grid ColumnSpacing="12" Padding="0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Spacing="2">
+                                <TextBlock Text="{x:Bind Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                <TextBlock Text="{x:Bind Subtitle, Mode=OneWay}" FontSize="12"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            </StackPanel>
+                            <TextBlock Grid.Column="1" Text="{x:Bind StatusText, Mode=OneWay}"
+                                       Foreground="{x:Bind StatusBrush, Mode=OneWay}" VerticalAlignment="Center"/>
+                        </Grid>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+            <TextBlock x:Name="EmptyHint" HorizontalAlignment="Center" VerticalAlignment="Center"
+                       MaxWidth="320" TextAlignment="Center" TextWrapping="Wrap"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="13"
+                       Text="暂无任务。手机执行命令或安装软件后会出现在这里。"/>
+        </Grid>
 
         <Grid Grid.Row="1" ColumnSpacing="8">
             <Grid.ColumnDefinitions>
@@ -45,7 +53,7 @@
         </Grid>
 
         <TextBox x:Name="OutputBox" Grid.Row="2" Height="260" IsReadOnly="True" AcceptsReturn="True"
-                 TextWrapping="NoWrap" FontFamily="Consolas" FontSize="12"
+                 TextWrapping="NoWrap" FontFamily="Consolas" FontSize="12" CornerRadius="8"
                  ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Auto"/>
     </Grid>
 </ContentDialog>

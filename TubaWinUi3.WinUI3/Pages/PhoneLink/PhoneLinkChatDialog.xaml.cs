@@ -30,6 +30,7 @@ public sealed partial class PhoneLinkChatDialog : ContentDialog
             PhoneLinkService.MessageAdded += OnMessageAdded;
             PhoneLinkService.TransferProgress += OnTransferProgress;
             foreach (var m in PhoneLinkService.GetMessages()) AppendBubble(m);
+            UpdateEmptyHint();
             ScrollToEnd();
         };
         Closed += (_, _) =>
@@ -79,7 +80,11 @@ public sealed partial class PhoneLinkChatDialog : ContentDialog
             }
         }
         _bubbles.Add(vm);
+        UpdateEmptyHint();
     }
+
+    private void UpdateEmptyHint()
+        => EmptyHint.Visibility = _bubbles.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 
     private async Task LoadThumbnailAsync(PhoneChatBubbleVm vm, string path)
     {

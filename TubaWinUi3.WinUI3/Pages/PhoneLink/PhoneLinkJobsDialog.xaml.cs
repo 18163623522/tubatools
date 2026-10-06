@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using TubaWinUi3.Services;
 
 namespace TubaWinUi3.Pages;
@@ -71,6 +72,7 @@ public sealed partial class PhoneLinkJobsDialog : ContentDialog
         {
             for (var i = 0; i < jobs.Count; i++) UpdateRow(_rows[i], jobs[i]);
         }
+        EmptyHint.Visibility = _rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         UpdateDetail();
     }
 
@@ -79,12 +81,14 @@ public sealed partial class PhoneLinkJobsDialog : ContentDialog
         Id = job.Id,
         Title = job.Title,
         StatusText = StatusText(job),
+        StatusBrush = StatusBrush(job),
         Subtitle = BuildSubtitle(job)
     };
 
     private static void UpdateRow(PhoneJobRowVm row, PhoneJob job)
     {
         row.StatusText = StatusText(job);
+        row.StatusBrush = StatusBrush(job);
         row.Subtitle = BuildSubtitle(job);
     }
 
@@ -125,6 +129,26 @@ public sealed partial class PhoneLinkJobsDialog : ContentDialog
         _ => $"失败（退出码 {job.ExitCode}）"
     };
 
+    private static Brush StatusBrush(PhoneJob job) => ThemeBrush(job.Status switch
+    {
+        PhoneJobStatus.Running => "AccentTextFillColorPrimaryBrush",
+        PhoneJobStatus.Done => "SystemFillColorSuccessBrush",
+        PhoneJobStatus.Cancelled => "TextFillColorSecondaryBrush",
+        _ => "SystemFillColorCriticalBrush"
+    });
+
+    private static Brush ThemeBrush(string key)
+    {
+        try
+        {
+            if (Application.Current.Resources.TryGetValue(key, out var value) && value is Brush brush) return brush;
+        }
+        catch
+        {
+        }
+        return new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+    }
+
     private static string BuildSubtitle(PhoneJob job)
     {
         var kind = job.Kind == PhoneJobKind.Exec ? "命令" : "安装";
@@ -156,6 +180,13 @@ public sealed class PhoneJobRowVm : INotifyPropertyChanged
     {
         get => _statusText;
         set { _statusText = value; Notify(nameof(StatusText)); }
+    }
+
+    private Brush _statusBrush = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+    public Brush StatusBrush
+    {
+        get => _statusBrush;
+        set { _statusBrush = value; Notify(nameof(StatusBrush)); }
     }
 
     private string _subtitle = "";
