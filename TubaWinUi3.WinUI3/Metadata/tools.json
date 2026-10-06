@@ -1759,15 +1759,24 @@
       ]
     },
     {
-<<<<<<< HEAD
       "match": "文件占用查看",
       "builtin": "file-locksmith",
-=======
-      "match": "环境变量",
-      "builtin": "environment-variables",
->>>>>>> pr223
       "categories": [
         "其他工具"
+      ]
+    },
+    {
+      "match": "环境变量",
+      "builtin": "environment-variables",
+      "categories": [
+        "其他工具"
+      ]
+    },
+    {
+      "match": "连接手机",
+      "builtin": "phone-link",
+      "categories": [
+        "网络工具"
       ]
     }
   ]

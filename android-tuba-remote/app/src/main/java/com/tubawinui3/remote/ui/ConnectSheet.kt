@@ -1,0 +1,103 @@
+package com.tubawinui3.remote.ui
+
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
+import com.tubawinui3.remote.RemoteViewModel
+import com.tubawinui3.remote.data.ConnectLink
+import com.tubawinui3.remote.data.ConnectTarget
+import com.tubawinui3.remote.data.DEFAULT_PORT
+
+/** 未连接时弹出的连接面板：扫码 / IP + 配对码。不可手动关闭。 */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ConnectSheet(vm: RemoteViewModel) {
+    val state = rememberModalBottomSheetState(skipPartiallyExpanded = true, confirmValueChange = { false })
+    var address by rememberSaveable { mutableStateOf(vm.lastTarget?.let { "${it.host}:${it.port}" } ?: "") }
+    var code by rememberSaveable { mutableStateOf("") }
+
+    val scanner = rememberLauncherForActivityResult(ScanContract()) { result ->
+        val text = result.contents ?: return@rememberLauncherForActivityResult
+        val target = ConnectLink.parse(text)
+        if (target == null) vm.scanError("不是有效的图吧工具箱连接二维码")
+        else if (target.code != null) vm.connect(target, target.code)
+        else address = "${target.host}:${target.port}"
+    }
+
+    ModalBottomSheet(onDismissRequest = {}, sheetState = state) {
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 24.dp).navigationBarsPadding(),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("连接电脑", style = MaterialTheme.typography.headlineSmall)
+            Text(
+                "在电脑上打开 图吧工具箱 → 内置工具 → 连接手机，并确保手机与电脑在同一局域网。",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Button(
+                onClick = {
+                    scanner.launch(
+                        ScanOptions().setDesiredBarcodeFormats(ScanOptions.QR_CODE).setPrompt("扫描电脑上的二维码")
+                            .setBeepEnabled(false).setOrientationLocked(false),
+                    )
+                },
+                enabled = !vm.connecting,
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("扫码连接") }
+
+            Text("或手动输入", style = MaterialTheme.typography.labelLarge)
+            OutlinedTextField(
+                value = address, onValueChange = { address = it.trim() },
+                label = { Text("电脑 IP 地址（可带端口，默认 $DEFAULT_PORT）") },
+                singleLine = true, modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+            )
+            OutlinedTextField(
+                value = code, onValueChange = { code = it.filter(Char::isDigit).take(6) },
+                label = { Text("6 位配对码") },
+                singleLine = true, modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+            )
+            vm.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedButton(
+                    onClick = {
+                        val t: ConnectTarget? = ConnectLink.parse(address)
+                        if (t == null) vm.scanError("请输入正确的 IP 地址") else vm.connect(t, code)
+                    },
+                    enabled = !vm.connecting,
+                ) { Text("连接") }
+                if (vm.connecting) CircularProgressIndicator(Modifier.height(36.dp))
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+    }
+}
