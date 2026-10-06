@@ -68,11 +68,9 @@ public static class BuiltinToolRegistry
         Register(new StartupManagerTool());
         Register(new DigitalLiteracyTestTool());
         Register(new TimeSyncTool());
-<<<<<<< HEAD
         Register(new FileLocksmithTool());
-=======
+        Register(new HandleCleanerTool());
         Register(new EnvironmentVariablesTool());
->>>>>>> pr223
     }
 
     public static IReadOnlyList<string> GetCategories()
