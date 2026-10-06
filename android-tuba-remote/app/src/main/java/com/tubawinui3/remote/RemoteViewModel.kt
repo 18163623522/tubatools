@@ -15,7 +15,7 @@ import com.tubawinui3.remote.data.ApiClient
 import com.tubawinui3.remote.data.ApiException
 import com.tubawinui3.remote.data.ChatMessage
 import com.tubawinui3.remote.data.ConnectTarget
-import com.tubawinui3.remote.data.MonitorData
+import com.tubawinui3.remote.data.HardwareSection
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -32,7 +32,9 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
         private set
     var error by mutableStateOf<String?>(null)
         private set
-    var monitor by mutableStateOf<MonitorData?>(null)
+    var hardware by mutableStateOf<List<HardwareSection>?>(null)
+        private set
+    var hardwareError by mutableStateOf<String?>(null)
         private set
     var screenshot by mutableStateOf<ImageBitmap?>(null)
         private set
@@ -93,7 +95,7 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
     fun disconnect() {
         pollJob?.cancel()
         client = null
-        monitor = null
+        hardware = null
         screenshot = null
         messages.clear()
         prefs.edit().remove("token").apply()
@@ -104,12 +106,12 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
         error = null
         messages.clear()
         refreshScreenshot()
+        loadHardware()
         pollJob?.cancel()
         pollJob = viewModelScope.launch {
             var failures = 0
             while (isActive) {
                 try {
-                    monitor = c.monitor()
                     pollChat(c)
                     failures = 0
                 } catch (e: ApiException) {
@@ -126,7 +128,7 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun disconnectKeepTarget() {
         client = null
-        monitor = null
+        hardware = null
         screenshot = null
     }
 
@@ -138,6 +140,18 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
 
     fun addMessage(m: ChatMessage) {
         if (messages.none { it.seq == m.seq }) messages.add(m)
+    }
+
+    fun loadHardware() {
+        val c = client ?: return
+        viewModelScope.launch {
+            try {
+                hardware = c.hardware()
+                hardwareError = null
+            } catch (e: ApiException) {
+                hardwareError = e.message
+            }
+        }
     }
 
     fun refreshScreenshot() {

@@ -31,10 +31,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import com.tubawinui3.remote.RemoteViewModel
-import com.tubawinui3.remote.data.MonitorData
-import java.util.Locale
 
 private enum class Tool(val title: String, val subtitle: String) {
+    MONITOR("实时硬件监控", "自选监控项，绘制实时曲线（含 FPS）"),
     SHELL("PowerShell 终端", "在电脑上执行命令并查看输出"),
     WINGET("应用安装", "搜索并通过 winget 在电脑上安装软件"),
     CHAT("传输助手", "与电脑互发文字、图片和文件"),
@@ -59,6 +58,7 @@ fun RemoteApp(vm: RemoteViewModel) {
     if (current != null) {
         BackHandler { tool = null }
         when (current) {
+            Tool.MONITOR -> MonitorScreen(client, onBack = { tool = null })
             Tool.SHELL -> ShellScreen(client, onBack = { tool = null })
             Tool.WINGET -> WingetScreen(client, onBack = { tool = null })
             Tool.CHAT -> ChatScreen(vm, client, onBack = { tool = null })
@@ -84,7 +84,7 @@ private fun Dashboard(vm: RemoteViewModel, onOpen: (Tool) -> Unit) {
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            item { MonitorCard(vm.monitor) }
+            item { HardwareCard(vm) }
             item { ScreenshotCard(vm) }
             item { Text("小工具", style = MaterialTheme.typography.titleMedium) }
             Tool.entries.forEach { t ->
@@ -101,40 +101,30 @@ private fun Dashboard(vm: RemoteViewModel, onOpen: (Tool) -> Unit) {
     }
 }
 
-private fun fmt(v: Double, unit: String, digits: Int = 0): String =
-    if (v < 0) "—" else String.format(Locale.US, "%.${digits}f", v) + unit
-
 @Composable
-private fun MonitorCard(m: MonitorData?) {
+private fun HardwareCard(vm: RemoteViewModel) {
+    val sections = vm.hardware
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("硬件监控", style = MaterialTheme.typography.titleMedium)
-            if (m == null) {
-                LinearProgressIndicator(Modifier.fillMaxWidth())
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("电脑配置", style = MaterialTheme.typography.titleMedium)
+                TextButton(onClick = { vm.loadHardware() }) { Text("刷新") }
+            }
+            if (sections == null) {
+                if (vm.hardwareError != null) Text(vm.hardwareError!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                else LinearProgressIndicator(Modifier.fillMaxWidth())
                 return@Column
             }
-            Stat("CPU", m.cpuName, m.cpuLoad, "${fmt(m.cpuLoad, "%")}  ${fmt(m.cpuTemp, "℃")}  ${fmt(m.cpuClock / 1000, " GHz", 2)}  ${fmt(m.cpuPower, " W")}")
-            if (m.gpuName.isNotEmpty() || m.gpuLoad >= 0)
-                Stat("GPU", m.gpuName, m.gpuLoad, "${fmt(m.gpuLoad, "%")}  ${fmt(m.gpuTemp, "℃")}  ${fmt(m.gpuVramUsedGB, " GB", 1)} 显存  ${fmt(m.gpuPower, " W")}")
-            Stat("内存", "", m.memLoad, "${fmt(m.memUsedGB, "", 1)} / ${fmt(m.memTotalGB, " GB", 1)}（${fmt(m.memLoad, "%")}）")
-            Text(
-                "磁盘 读 ${fmt(m.diskReadMBs, " MB/s", 1)} 写 ${fmt(m.diskWriteMBs, " MB/s", 1)}  ·  网络 ↑${fmt(m.netUpMBs, " MB/s", 2)} ↓${fmt(m.netDownMBs, " MB/s", 2)}",
-                style = MaterialTheme.typography.bodySmall,
-            )
-            if (m.batPercent >= 0) Text("电池 ${fmt(m.batPercent, "%")}${if (m.batCharging) "（充电中）" else ""}", style = MaterialTheme.typography.bodySmall)
-            if (m.fps >= 0) Text("帧率 ${fmt(m.fps, " FPS")}", style = MaterialTheme.typography.bodySmall)
+            sections.filter { it.items.isNotEmpty() }.forEach { sec ->
+                Text(sec.title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                sec.items.forEach { (k, v) ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(k, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(0.35f))
+                        Text(v, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(0.65f))
+                    }
+                }
+            }
         }
-    }
-}
-
-@Composable
-private fun Stat(label: String, name: String, load: Double, detail: String) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(if (name.isEmpty()) label else "$label  $name", style = MaterialTheme.typography.labelLarge, maxLines = 1, modifier = Modifier.weight(1f))
-        }
-        if (load >= 0) LinearProgressIndicator(progress = { (load / 100).toFloat().coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
-        Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

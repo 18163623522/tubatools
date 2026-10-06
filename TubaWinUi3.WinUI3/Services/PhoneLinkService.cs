@@ -32,7 +32,7 @@ public sealed class PhoneChatMessage
 /// <summary>
 /// 「连接手机」局域网控制服务：HttpListener + JSON。
 /// 配对码（或二维码里携带的同一配对码）换取会话令牌，之后所有接口都要带 X-Token。
-/// 接口：info / monitor / screenshot / exec(PowerShell) / winget / chat。
+/// 接口：info / hardware(电脑配置) / monitor(实时数据，?fps=1 含帧率) / screenshot / exec(PowerShell) / winget / chat。
 /// </summary>
 public static class PhoneLinkService
 {
@@ -247,8 +247,21 @@ public static class PhoneLinkService
                 });
                 return;
             case "/api/monitor":
-                await WriteJson(ctx, 200, await ReadMonitorAsync());
+                await WriteJson(ctx, 200, await ReadMonitorAsync(ParseQuery(req).GetValueOrDefault("fps") == "1"));
                 return;
+            case "/api/hardware":
+                {
+                    var sections = await HardwareInfoService.LoadAsync();
+                    await WriteJson(ctx, 200, new
+                    {
+                        sections = sections.Select(sec => new
+                        {
+                            title = sec.Title,
+                            items = sec.Items.Select(i => new { label = i.Label, value = i.Value })
+                        })
+                    });
+                    return;
+                }
             case "/api/screenshot":
                 {
                     var q = ParseQuery(req);
@@ -411,7 +424,7 @@ public static class PhoneLinkService
 
     // ───────────────────────── 监控 / 截图 ─────────────────────────
 
-    private static async Task<MonitorSample> ReadMonitorAsync()
+    private static async Task<MonitorSample> ReadMonitorAsync(bool withFps)
     {
         await _monitorLock.WaitAsync();
         try
@@ -419,7 +432,7 @@ public static class PhoneLinkService
             return await Task.Run(() =>
             {
                 LiteMonitorService.Instance.EnsureInit();
-                return LiteMonitorService.Instance.Read();
+                return LiteMonitorService.Instance.Read(withFps);
             });
         }
         finally { _monitorLock.Release(); }

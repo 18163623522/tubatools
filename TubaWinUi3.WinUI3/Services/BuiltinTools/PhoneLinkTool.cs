@@ -10,7 +10,7 @@ public sealed class PhoneLinkTool : IBuiltinTool
 {
     public string Id => "phone-link";
     public string Name => LocalizationService.L("Builtin_phone-link_Name", "连接手机");
-    public string Description => LocalizationService.L("Builtin_phone-link_Desc", "手机端通过局域网（二维码 / 配对码 / IP）连接电脑，实时查看硬件监控与屏幕截图，远程执行 PowerShell、winget 安装软件，并与电脑互传文字、图片和文件。");
+    public string Description => LocalizationService.L("Builtin_phone-link_Desc", "手机端通过局域网（二维码 / 配对码 / IP）连接电脑，查看电脑配置与屏幕截图、自选项实时监控（含 FPS 曲线），远程执行 PowerShell、winget 安装软件，并与电脑互传文字、图片和文件。");
     public string Glyph => "\uE8EA";
     public string Category => "网络工具";
     public BuiltinToolKind Kind => BuiltinToolKind.BackgroundTask;

@@ -38,8 +38,10 @@ data class MonitorData(
     val diskReadMBs: Double = -1.0, val diskWriteMBs: Double = -1.0, val diskTemp: Double = -1.0,
     val netUpMBs: Double = -1.0, val netDownMBs: Double = -1.0,
     val batPercent: Double = -1.0, val batCharging: Boolean = false,
-    val fps: Double = -1.0,
+    val fps: Double = -1.0, val fpsLow1: Double = -1.0, val frameTimeMs: Double = -1.0,
 )
+
+data class HardwareSection(val title: String, val items: List<Pair<String, String>>)
 
 data class ChatMessage(
     val seq: Long, val id: String, val from: String, val type: String,
@@ -108,8 +110,20 @@ class ApiClient(val host: String, val port: Int, var token: String? = null) {
 
     suspend fun info(): JsonObject = getObj("/api/info")
 
-    suspend fun monitor(): MonitorData {
-        val o = getObj("/api/monitor")
+    suspend fun hardware(): List<HardwareSection> =
+        (getObj("/api/hardware")["sections"] as? JsonArray).orEmpty().map { sec ->
+            val o = sec.jsonObject
+            HardwareSection(
+                o["title"]?.jsonPrimitive?.contentOrNull ?: "",
+                (o["items"] as? JsonArray).orEmpty().map {
+                    val i = it.jsonObject
+                    (i["label"]?.jsonPrimitive?.contentOrNull ?: "") to (i["value"]?.jsonPrimitive?.contentOrNull ?: "")
+                },
+            )
+        }
+
+    suspend fun monitor(withFps: Boolean = false): MonitorData {
+        val o = if (withFps) getObj("/api/monitor", "fps" to "1") else getObj("/api/monitor")
         fun d(k: String) = o[k]?.jsonPrimitive?.doubleOrNull ?: -1.0
         fun s(k: String) = o[k]?.jsonPrimitive?.contentOrNull ?: ""
         return MonitorData(
@@ -120,7 +134,7 @@ class ApiClient(val host: String, val port: Int, var token: String? = null) {
             d("diskReadMBs"), d("diskWriteMBs"), d("diskTemp"),
             d("netUpMBs"), d("netDownMBs"),
             d("batPercent"), o["batCharging"]?.jsonPrimitive?.contentOrNull == "true",
-            d("fps"),
+            d("fps"), d("fpsLow1"), d("frameTimeMs"),
         )
     }
 
